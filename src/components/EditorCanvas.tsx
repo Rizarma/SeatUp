@@ -4,9 +4,9 @@ import type { Pt, VenueObject } from '../lib/venue';
 import { uid } from '../lib/venue';
 import { fitViewBox, toWorld, viewBoxStr } from '../lib/camera';
 import type { ViewBox } from '../lib/camera';
-import { sectionGeomFor } from '../lib/contain';
+import { resolvedPoints, sectionGeomFor, shapeCenter, vectorCanvasCenter } from '../lib/contain';
 import { sectionColorById } from '../lib/sectionColor';
-import { bboxOf, toPointsString, translatePoints } from '../lib/geometry';
+import { bboxOf, normalizeAngle, rotatePoints, rotateShapeBy, rotationOf, toPointsString, translatePoints } from '../lib/geometry';
 import { useStore } from '../store';
 
 export const STATUS_COLOR: Record<string, string> = {
@@ -53,6 +53,7 @@ function translateObj(o: VenueObject, dx: number, dy: number): VenueObject {
       tx: o.vTransform.tx + dx / o.vTransform.scale,
       ty: o.vTransform.ty + dy / o.vTransform.scale,
       scale: o.vTransform.scale,
+      ...(o.vTransform.rotation ? { rotation: o.vTransform.rotation } : null),
     };
   }
   return moved;
@@ -76,6 +77,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
   >(null);
   const [previewObj, setPreviewObj] = useState<VenueObject | null>(null);
   const [scaleDrag, setScaleDrag] = useState<{ id: string; orig: VenueObject; cx: number; cy: number; d0: number } | null>(null);
+  /** Drag gagang putar: putar preview terhadap (cx,cy); commit saat pointerup. */
+  const [rotateDrag, setRotateDrag] = useState<{ id: string; orig: VenueObject; cx: number; cy: number; startAngle: number; delta: number } | null>(null);
   const [vecBox, setVecBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [seatMarquee, setSeatMarquee] = useState<{ start: Pt; end: Pt } | null>(null);
   const seatGesture = useRef<{ start: Pt; clientX: number; clientY: number; pointerId: number; additive: boolean } | null>(null);
@@ -106,7 +109,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     if (!focusId && savedVenueView.current) setVb(savedVenueView.current);
     else fitRef.current();
     previousFocus.current = focusId;
-    setDraft([]); setGhost(null); setDrag(null); setPreviewObj(null); setScaleDrag(null);
+    setDraft([]); setGhost(null); setDrag(null); setPreviewObj(null); setScaleDrag(null); setRotateDrag(null);
     setSeatMarquee(null); seatGesture.current = null;
     selectSeats([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -193,6 +196,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         onCancelRowDrag();
         setDraft([]);
         setGhost(null);
+        setRotateDrag(null);
+        setPreviewObj(null);
         onAnchor(null);
         selectSeats([]);
         select(null);
@@ -297,17 +302,47 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         const uy = (scaleDrag.cy - t.ty) / t.scale;
         setPreviewObj({
           ...scaleDrag.orig,
-          vTransform: { tx: scaleDrag.cx - ux * s2, ty: scaleDrag.cy - uy * s2, scale: s2 },
+          vTransform: { tx: scaleDrag.cx - ux * s2, ty: scaleDrag.cy - uy * s2, scale: s2, ...(t.rotation ? { rotation: t.rotation } : null) },
         });
       }
+      return;
+    }
+    if (rotateDrag) {
+      // Sudut pointer relatif pusat (derajat) → delta dari awal drag.
+      const ang = (Math.atan2(p[1] - rotateDrag.cy, p[0] - rotateDrag.cx) * 180) / Math.PI;
+      let d = (((ang - rotateDrag.startAngle) % 360) + 540) % 360 - 180;
+      // Shift = snap kelipatan 15° (konvensi umum editor kanvas).
+      if (e.shiftKey) d = Math.round(d / 15) * 15;
+      // Rotasi persisten (bukan bake): preview = sudut awal + delta, panel
+      // dan containment membaca status yang sama.
+      if (d === 0) {
+        setPreviewObj(rotateDrag.orig);
+      } else {
+        try {
+          setPreviewObj(rotateShapeBy(rotateDrag.orig, d));
+        } catch {
+          setPreviewObj(rotateDrag.orig);
+        }
+      }
+      if (d !== rotateDrag.delta) setRotateDrag({ ...rotateDrag, delta: d });
       return;
     }
     if (!drag) return;
     const dx = p[0] - drag.start[0];
     const dy = p[1] - drag.start[1];
     if (drag.vertex >= 0) {
+      // Vertex ditampilkan terputar; delta pointer (kanvas) diputar balik
+      // agar tersimpan ke base points yang benar.
+      const rot = rotationOf(drag.orig);
+      let ddx = dx;
+      let ddy = dy;
+      if (rot !== 0) {
+        const r = rotatePoints([[dx, dy]], -rot, 0, 0)[0];
+        ddx = r[0];
+        ddy = r[1];
+      }
       const pts = drag.orig.points.slice();
-      pts[drag.vertex] = [drag.orig.points[drag.vertex][0] + dx, drag.orig.points[drag.vertex][1] + dy];
+      pts[drag.vertex] = [drag.orig.points[drag.vertex][0] + ddx, drag.orig.points[drag.vertex][1] + ddy];
       setPreviewObj({ ...drag.orig, points: pts });
     } else {
       setPreviewObj(translateObj(drag.orig, dx, dy));
@@ -418,8 +453,15 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === done.id ? done : o)) }));
       setVecBox(null);
     }
+    // Rotate: commit hanya bila sudut berubah (delta 0 = tak ada undo baru).
+    if (rotateDrag && previewObj && rotateDrag.delta !== 0) {
+      const done = previewObj;
+      update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === done.id ? done : o)) }));
+      if (done.kind === 'vector') setVecBox(null);
+    }
     setDrag(null);
     setScaleDrag(null);
+    setRotateDrag(null);
     setPreviewObj(null);
   };
 
@@ -433,6 +475,20 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
   const visible = focusId
     ? rendered.filter(o => o.id === focusId || o.sectionId === focusId || o.seats.some(s => s.sectionId === focusId))
     : rendered.filter(o => o.kind !== 'row-straight' && o.kind !== 'row-arc');
+  // Pusat rotasi vector (flatten + vTransform, tanpa rotasi) — pusat yang sama
+  // dipakai sectionGeomFor agar tampilan = uji containment. Memo per objek
+  // agar pan/zoom tak mem-flatten ulang.
+  const vectorCenters = useMemo(() => {
+    const m = new Map<string, Pt>();
+    for (const o of rendered) {
+      if (o.kind !== 'vector' || !o.d) continue;
+      const rot = o.vTransform?.rotation ?? 0;
+      if (!Number.isFinite(rot) || rot === 0) continue;
+      const c = vectorCanvasCenter(o);
+      if (c) m.set(o.id, c);
+    }
+    return m;
+  }, [rendered]);
 
   const ptsStr = toPointsString;
 
@@ -461,7 +517,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       onPointerMove={onSvgPointerMove}
       onPointerUp={onSvgPointerUp}
       onLostPointerCapture={() => { pan.current = null; if (rowGesture.current) { rowGesture.current = null; onCancelRowDrag(); } seatGesture.current = null; setSeatMarquee(null); }}
-      onPointerCancel={() => { rowGesture.current = null; seatGesture.current = null; setSeatMarquee(null); onCancelRowDrag(); pan.current = null; setDrag(null); setGhost(null); setPreviewObj(null); }}
+      onPointerCancel={() => { rowGesture.current = null; seatGesture.current = null; setSeatMarquee(null); onCancelRowDrag(); pan.current = null; setDrag(null); setScaleDrag(null); setRotateDrag(null); setGhost(null); setPreviewObj(null); }}
       onDoubleClick={() => {
         if (draft.length >= 3) commitPolygon(draft);
       }}
@@ -509,8 +565,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           const st = o.svgStroke ?? null;
           const selStyle = isSel ? { stroke: '#2563eb', strokeWidth: 2.5 / t.scale } : {};
           const secColor = o.isSection ? sectionColor(o.id) : null;
+          const rot = t.rotation ?? 0;
+          const rc = Number.isFinite(rot) && rot !== 0 ? (vectorCenters.get(o.id) ?? vectorCanvasCenter(o)) : null;
           return (
             <g key={o.id} {...sectionEvents} aria-label={o.label}>
+              <g transform={rc ? `rotate(${rot} ${rc[0]} ${rc[1]})` : undefined}>
               <g
                 ref={isSel ? selVecRef : undefined}
                 transform={`translate(${t.tx} ${t.ty}) scale(${t.scale})`}
@@ -539,13 +598,17 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
                     stroke={secColor} strokeWidth={1.5 / t.scale} strokeOpacity={0.9} pointerEvents="none" />
                 )}
               </g>
+              </g>
             </g>
           );
         }
         const selStyle = isSel ? { stroke: '#2563eb', strokeWidth: 3 } : {};
         if (o.kind === 'aisle') {
+          const arot = rotationOf(o);
+          const ac = arot !== 0 ? shapeCenter(o) : null;
           return (
-            <g key={o.id} {...sectionEvents} aria-label={o.label}>
+            <g key={o.id} {...sectionEvents} aria-label={o.label}
+              transform={ac ? `rotate(${arot} ${ac[0]} ${ac[1]})` : undefined}>
               <polyline points={ptsStr(o.points)} fill="none" stroke="#94a3b8" strokeWidth={o.width} strokeLinecap="round" opacity={0.8} {...selectDrag} style={selStyle} />
             </g>
           );
@@ -600,8 +663,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           : o.kind === 'stage' ? '#cbd5e1' : o.kind === 'import-draft' ? 'rgba(251,191,36,0.35)' : 'rgba(147,197,253,0.35)';
         const fillOpacity = o.isSection ? 0.18 : undefined;
         const stroke = o.isSection ? sectionColor(o.id) : o.kind === 'import-draft' ? '#dc2626' : o.kind === 'stage' ? '#475569' : '#3b82f6';
+        const prot = rotationOf(o);
+        const prc = prot !== 0 ? shapeCenter(o) : null;
         return (
-          <g key={o.id} {...sectionEvents} aria-label={o.label}>
+          <g key={o.id} {...sectionEvents} aria-label={o.label}
+            transform={prc ? `rotate(${prot} ${prc[0]} ${prc[1]})` : undefined}>
             <polygon vectorEffect="non-scaling-stroke" points={ptsStr(o.points)} fill={fill} fillOpacity={fillOpacity} stroke={stroke} strokeWidth={isSel ? 3 : 2} strokeDasharray={o.kind === 'import-draft' && !o.isSection ? '10 6' : undefined} {...selectDrag} style={selStyle} />
           </g>
         );
@@ -616,43 +682,60 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         const style = { stroke: '#f59e0b', strokeWidth: 3, vectorEffect: 'non-scaling-stroke' as const };
         let outline;
         if (hovered.kind === 'vector' && hovered.d && hovered.vTransform) {
-          outline = <path d={hovered.d} transform={`translate(${hovered.vTransform.tx} ${hovered.vTransform.ty}) scale(${hovered.vTransform.scale})`}
-            fill="rgba(245,158,11,0.16)" fillRule={hovered.svgFillRule ?? 'nonzero'} {...style} />;
+          const hrot = hovered.vTransform.rotation ?? 0;
+          const hrc = Number.isFinite(hrot) && hrot !== 0
+            ? (vectorCenters.get(hovered.id) ?? vectorCanvasCenter(hovered))
+            : null;
+          outline = <g transform={hrc ? `rotate(${hrot} ${hrc[0]} ${hrc[1]})` : undefined}>
+            <path d={hovered.d} transform={`translate(${hovered.vTransform.tx} ${hovered.vTransform.ty}) scale(${hovered.vTransform.scale})`}
+              fill="rgba(245,158,11,0.16)" fillRule={hovered.svgFillRule ?? 'nonzero'} {...style} />
+          </g>;
         } else if (hovered.kind === 'aisle') {
-          outline = <polyline points={ptsStr(hovered.points)} fill="none" stroke="#f59e0b" strokeWidth={hovered.width + vb.w / 180} strokeLinecap="round" opacity={0.6} />;
+          const harot = rotationOf(hovered);
+          const harc = harot !== 0 ? shapeCenter(hovered) : null;
+          outline = <polyline points={ptsStr(hovered.points)} fill="none" stroke="#f59e0b" strokeWidth={hovered.width + vb.w / 180} strokeLinecap="round" opacity={0.6}
+            transform={harc ? `rotate(${harot} ${harc[0]} ${harc[1]})` : undefined} />;
         } else if (hovered.kind.startsWith('row')) {
           outline = hovered.seats.map(seat => <circle key={seat.id} cx={seat.x} cy={seat.y} r={(seat.radius ?? 8) * 1.2} fill="rgba(245,158,11,0.16)" {...style} />);
         } else {
-          outline = <polygon points={ptsStr(hovered.points)} fill="rgba(245,158,11,0.16)" {...style} />;
+          const hprot = rotationOf(hovered);
+          const hprc = hprot !== 0 ? shapeCenter(hovered) : null;
+          outline = <polygon points={ptsStr(hovered.points)} fill="rgba(245,158,11,0.16)" {...style}
+            transform={hprc ? `rotate(${hprot} ${hprc[0]} ${hprc[1]})` : undefined} />;
         }
         return <g data-highlight-object={hovered.id} pointerEvents="none" aria-hidden="true">{outline}</g>;
       })()}
 
-      {selected && selected.id !== focusId && visible.find((o) => o.id === selected.id) && (selected.kind !== 'row-straight' && selected.kind !== 'row-arc') && (
-        <g>
-          {(previewObj?.id === selected.id ? previewObj.points : selected.points).map((p, i) => (
-            <circle
-              key={i}
-              cx={p[0]}
-              cy={p[1]}
-              r={8}
-              fill="#fff"
-              stroke="#2563eb"
-              strokeWidth={2.5}
-              className="vh"
-              onPointerDown={(e) => {
-                if (tool !== 'select') return;
-                e.stopPropagation();
-                const svg = svgRef.current;
-                if (!svg) return;
-                const r = svg.getBoundingClientRect();
-                const sp: Pt = toWorld(e.clientX, e.clientY, r, vb);
-                setDrag({ id: selected.id, vertex: i, orig: selected, start: sp });
-              }}
-            />
-          ))}
-        </g>
-      )}
+      {selected && selected.id !== focusId && visible.find((o) => o.id === selected.id) && (selected.kind !== 'row-straight' && selected.kind !== 'row-arc') && (() => {
+        // Vertex mengikuti rotasi (koordinat kanvas hasil resolve) agar
+        // menempel di shape; index tetap 1:1 dengan base points.
+        const vTarget = previewObj?.id === selected.id ? previewObj : selected;
+        return (
+          <g>
+            {resolvedPoints(vTarget).map((p, i) => (
+              <circle
+                key={i}
+                cx={p[0]}
+                cy={p[1]}
+                r={8}
+                fill="#fff"
+                stroke="#2563eb"
+                strokeWidth={2.5}
+                className="vh"
+                onPointerDown={(e) => {
+                  if (tool !== 'select') return;
+                  e.stopPropagation();
+                  const svg = svgRef.current;
+                  if (!svg) return;
+                  const r = svg.getBoundingClientRect();
+                  const sp: Pt = toWorld(e.clientX, e.clientY, r, vb);
+                  setDrag({ id: selected.id, vertex: i, orig: selected, start: sp });
+                }}
+              />
+            ))}
+          </g>
+        );
+      })()}
 
       {selected?.id !== focusId && selected?.kind === 'vector' && vecBox && tool === 'select' && (() => {
         // vecBox diukur sekali saat seleksi; saat shape digeser/di-scale (previewObj),
@@ -669,8 +752,13 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
             h: vecBox.h * k,
           };
         }
-        const cx = dx.x + dx.w / 2;
-        const cy = dx.y + dx.h / 2;
+        // Saat ada rotasi, pusat skala = pusat rotasi (flatten) agar konsisten
+        // dengan containment & preview; kotak seleksi ikut diputar.
+        const baseForCenter = previewObj?.id === selected.id ? previewObj : selected;
+        const rot1 = t1?.rotation ?? 0;
+        const rc = Number.isFinite(rot1) && rot1 !== 0 ? vectorCanvasCenter(baseForCenter) : null;
+        const cx = rc ? rc[0] : dx.x + dx.w / 2;
+        const cy = rc ? rc[1] : dx.y + dx.h / 2;
         const S = 12;
         const corners: Array<[number, number]> = [
           [dx.x, dx.y],
@@ -679,7 +767,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           [dx.x + dx.w, dx.y + dx.h],
         ];
         return (
-          <g>
+          <g transform={rc ? `rotate(${rot1} ${rc[0]} ${rc[1]})` : undefined}>
             <rect x={dx.x} y={dx.y} width={dx.w} height={dx.h} fill="none" stroke="#2563eb" strokeWidth={1.5} strokeDasharray="6 4" pointerEvents="none" />
             {corners.map(([px, py], i) => (
               <rect
@@ -700,6 +788,84 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
 
       {/* Objek points (section/polygon/stage/aisle/draf) sengaja TANPA kotak bbox:
           seleksi hanya mengikuti shape polygon + vertex bulat agar tidak ganda. */}
+
+      {/* Gagang putar: lingkaran di atas pusat shape terpilih (tool select).
+          Seret mengelilingi pusat untuk memutar; Shift = snap 15°; Esc batal. */}
+      {selected && tool === 'select' && selected.id !== focusId
+        && (selected.kind === 'stage' || selected.kind === 'section'
+          || selected.kind === 'import-draft' || selected.kind === 'vector')
+        && selected.kind !== 'row-straight' && selected.kind !== 'row-arc'
+        && visible.find((o) => o.id === selected.id) && (() => {
+        const target = previewObj?.id === selected.id ? previewObj : selected;
+        const active = rotateDrag && rotateDrag.id === selected.id ? rotateDrag : null;
+        let box: { x: number; y: number; w: number; h: number } | null = null;
+        let cx = 0;
+        let cy = 0;
+        if (target.kind === 'vector') {
+          if (!vecBox || !target.vTransform) return null;
+          const t0 = selected.vTransform;
+          const t1 = target.vTransform;
+          let dx = vecBox;
+          if (t0 && (t1.tx !== t0.tx || t1.ty !== t0.ty || t1.scale !== t0.scale)) {
+            const k = t0.scale !== 0 ? t1.scale / t0.scale : 1;
+            dx = {
+              x: t1.tx + (vecBox.x - t0.tx) * k,
+              y: t1.ty + (vecBox.y - t0.ty) * k,
+              w: vecBox.w * k,
+              h: vecBox.h * k,
+            };
+          }
+          box = dx;
+          const rc = vectorCenters.get(target.id) ?? vectorCanvasCenter(target);
+          cx = rc ? rc[0] : dx.x + dx.w / 2;
+          cy = rc ? rc[1] : dx.y + dx.h / 2;
+        } else {
+          // Kotak dari objek awal drag agar pusat stabil saat preview berputar.
+          const src = active ? active.orig : target;
+          if (src.points.length === 0) return null;
+          const b = bboxOf(src.points);
+          if (!b) return null;
+          box = b;
+          cx = active ? active.cx : b.cx;
+          cy = active ? active.cy : b.cy;
+        }
+        // Gagang MENGORBIT mengikuti orientasi shape: offset dari pusat
+        // sebesar setengah tinggi box + GAP agar gagang selalu di luar shape.
+        // Angka = total sudut live.
+        const baseRot = rotationOf(active ? active.orig : target);
+        const liveRot = active ? normalizeAngle(baseRot + active.delta) : baseRot;
+        const GAP = 28;
+        const R = box.h / 2 + GAP;
+        const off = rotatePoints([[0, -R]], liveRot, 0, 0)[0];
+        const hx = cx + off[0];
+        const hy = cy + off[1];
+        const top = rotatePoints([[cx, box.y]], liveRot, cx, cy)[0];
+        return (
+          <g key={`rotate-${selected.id}`}>
+            <line x1={top[0]} y1={top[1]} x2={hx} y2={hy} stroke="#2563eb" strokeWidth={1.5} strokeDasharray="4 3" pointerEvents="none" />
+            <circle
+              cx={hx} cy={hy} r={8} fill="#fff" stroke="#2563eb" strokeWidth={2.5} className="vh"
+              data-rotate-handle={selected.id}
+              style={{ cursor: 'grab' }}
+              onPointerDown={(e) => {
+                if (tool !== 'select' || e.button !== 0 || e.altKey) return;
+                e.stopPropagation();
+                const svg = svgRef.current;
+                if (!svg) return;
+                const r = svg.getBoundingClientRect();
+                const sp: Pt = toWorld(e.clientX, e.clientY, r, vb);
+                const sa = (Math.atan2(sp[1] - cy, sp[0] - cx) * 180) / Math.PI;
+                setRotateDrag({ id: selected.id, orig: target, cx, cy, startAngle: sa, delta: 0 });
+              }}
+            >
+              <title>Seret untuk memutar (Shift = kelipatan 15°)</title>
+            </circle>
+            {active && (
+              <text x={hx + 12} y={hy + 4} className="lbl">{Math.round(liveRot)}°</text>
+            )}
+          </g>
+        );
+      })()}
 
       {draft.length > 0 && (
         <g>

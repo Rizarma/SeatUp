@@ -29,4 +29,13 @@ describe('validate + roundtrip JSON', () => {
     doc.objects[0].shape = 'ufo';
     expect(validateVenueDoc(doc).ok).toBe(false);
   });
+  it('rotation opsional: angka finite valid, non-finite ditolak', () => {
+    const doc = JSON.parse(JSON.stringify(sampleVenue()));
+    doc.objects[0].rotation = 45;
+    expect(validateVenueDoc(doc).ok).toBe(true);
+    doc.objects[0].rotation = Infinity;
+    const v = validateVenueDoc(doc);
+    expect(v.ok).toBe(false);
+    expect(v.errors.some((e: string) => e.includes('rotation'))).toBe(true);
+  });
 });

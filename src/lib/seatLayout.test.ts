@@ -36,6 +36,13 @@ describe('seat layout',()=>{
   const result=[...fitSeatsToShape([section,row,aisle],section,24,4).values()];
   expect(result.every(s=>Math.abs(s.x-100)>=22)).toBe(true);
  });
+ it('lorong terputar ikut sebagai penghalang',()=>{
+  // vertikal [[100,0],[100,160]] diputar 90° thd pusat (100,80) -> horizontal y=80
+  const aisle: VenueObject={...section,id:'aisle',kind:'aisle',isSection:false,points:[[100,0],[100,160]],width:20,rotation:90};
+  const result=[...fitSeatsToShape([section,row,aisle],section,24,4).values()];
+  expect(result).toHaveLength(6);
+  expect(result.every(s=>Math.abs(s.y-80)>=22-1e-9)).toBe(true);
+ });
  it('fails atomically if seats cannot fit',()=>{
   const original=structuredClone(row);
   expect(()=>fitSeatsToShape([section,row],section,200,4)).toThrow();

@@ -1,4 +1,5 @@
 import type { Pt, VenueObject } from './venue';
+import { bboxOf, rotatePoints, rotationOf } from './geometry';
 
 /**
  * Containment kursi-di-dalam-section berbasis footprint (cakram), BUKAN
@@ -349,11 +350,19 @@ export function sectionGeomFor(obj: VenueObject): SectionGeom | null {
     if (rings.length === 0) return null;
     const t = obj.vTransform ?? { tx: 0, ty: 0, scale: 1 };
     const mapped = rings.map((r) => r.map(([x, y]) => [t.tx + x * t.scale, t.ty + y * t.scale] as Pt));
-    return { rings: mapped, rule: obj.svgFillRule ?? 'nonzero' };
+    const rot = (t as { rotation?: number }).rotation ?? 0;
+    if (!Number.isFinite(rot) || rot === 0) return { rings: mapped, rule: obj.svgFillRule ?? 'nonzero' };
+    // Putar terhadap pusat bbox kanvas — pusat yang sama dipakai renderer
+    // (vectorCanvasCenter) agar uji containment konsisten dengan tampilan.
+    const flat = mapped.flat();
+    const b = bboxOf(flat);
+    if (!b) return { rings: mapped, rule: obj.svgFillRule ?? 'nonzero' };
+    return { rings: mapped.map((ring) => rotatePoints(ring, rot, b.cx, b.cy)), rule: obj.svgFillRule ?? 'nonzero' };
   }
   if (obj.kind === 'section') {
     if (!obj.closed || obj.points.length < 3) return null;
-    return { rings: [obj.points.map((p) => [p[0], p[1]] as Pt)], rule: 'evenodd' };
+    const pts = resolvedPoints(obj);
+    return { rings: [pts.map((p) => [p[0], p[1]] as Pt)], rule: 'evenodd' };
   }
   return null;
 }
@@ -361,6 +370,49 @@ export function sectionGeomFor(obj: VenueObject): SectionGeom | null {
 /** Klasifikasikan kandidat kursi terhadap section (footprint penuh). */
 export function classifySeats(cands: Array<{ x: number; y: number }>, sec: SectionGeom, r = SEAT_R): boolean[] {
   return cands.map((c) => discInside(c.x, c.y, r, sec));
+}
+
+/**
+ * Pusat rotasi vector di koordinat kanvas: pusat bbox hasil pemetaan
+ * flatten(path) via vTransform (tanpa rotasi). Pusat yang sama dipakai
+ * sectionGeomFor dan renderer agar tampilan = uji containment.
+ * Fallback ke (tx,ty) bila path tak bisa di-flatten (dekorasi terbuka).
+ */
+export function vectorCanvasCenter(obj: VenueObject): Pt | null {
+  if (obj.kind !== 'vector' || !obj.d) return null;
+  const t = obj.vTransform ?? { tx: 0, ty: 0, scale: 1 };
+  const rings = flattenPath(obj.d);
+  if (rings.length === 0) return [t.tx, t.ty];
+  const mapped = rings.flat().map(([x, y]) => [t.tx + x * t.scale, t.ty + y * t.scale] as Pt);
+  const b = bboxOf(mapped);
+  return b ? [b.cx, b.cy] : [t.tx, t.ty];
+}
+
+/**
+ * Pusat rotasi shape di koordinat kanvas — pusat yang sama dipakai renderer
+ * (EditorCanvas/Preview) dan sectionGeomFor agar tampilan = uji containment.
+ * Points: pusat bbox base points. Vector: pusat bbox kanvas hasil pemetaan
+ * (lihat vectorCanvasCenter).
+ */
+export function shapeCenter(obj: VenueObject): Pt | null {
+  if (obj.kind === 'vector') return vectorCanvasCenter(obj);
+  if (obj.points.length === 0) return null;
+  const b = bboxOf(obj.points);
+  return b ? [b.cx, b.cy] : null;
+}
+
+/**
+ * Points shape dalam koordinat kanvas: base points diputar sebesar
+ * rotationOf terhadap shapeCenter. Vector memakai path `d` (bukan points).
+ * Urutan titik dipertahankan 1:1 agar index vertex tetap valid.
+ */
+export function resolvedPoints(obj: VenueObject): Pt[] {
+  if (obj.kind === 'vector') return obj.points;
+  const rot = rotationOf(obj);
+  if (rot === 0 || obj.points.length === 0) return obj.points;
+  const c = shapeCenter(obj);
+  if (!c) return obj.points;
+  return rotatePoints(obj.points, rot, c[0], c[1]);
 }
 
 /**

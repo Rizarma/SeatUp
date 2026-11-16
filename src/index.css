@@ -321,6 +321,12 @@ label.btn.filepick input { max-width: 100%; }
 .seat-layout-controls .fld { margin-bottom: 8px; }
 .seat-layout-controls .muted { overflow-wrap: anywhere; }
 .seat-layout-controls > button { width: 100%; min-height: 40px; }
+/* Putar shape: ritme yang sama (label 88px + preset sejajar + tombol penuh). */
+.shape-rotate-controls { border-top: 1px solid var(--border); margin: 12px 0 0; padding: 12px 0 2px; }
+.shape-rotate-controls .fld { margin-bottom: 8px; }
+.shape-rotate-controls .muted { overflow-wrap: anywhere; }
+.shape-rotate-controls .row > button { flex: 1; min-height: 40px; }
+.shape-rotate-controls > button.apply { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 40px; margin-top: 8px; }
 /* Section di dalam body: divider penuh selebar panel, bukan kartu bersarang */
 .pbody > section { margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px; }
 .pbody > section:first-child { margin-top: -14px; }

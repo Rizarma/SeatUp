@@ -2,9 +2,10 @@ import React from 'react';
 import SeatLayoutControls from './SeatLayoutControls';
 import {
   Armchair, Circle, Footprints, Hand, Podium, Download, FileUp, FolderOpen, Image as ImageIcon, Layers, PenTool, Save,
-  Shapes, Square, Trash2, TriangleAlert, Upload,
+  Shapes, Square, Trash2, TriangleAlert, Upload, RotateCw,
 } from 'lucide-react';
 import type { Pt, RowParams, ObjKind, Seat, VenueObject } from '../lib/venue';
+import { normalizeAngle, rotateShapeBy, rotationOf } from '../lib/geometry';
 
 export type RowForm = RowParams & { price: number };
 import { markEligibility } from '../lib/panelContext';
@@ -511,6 +512,71 @@ function SectionColorEditor({ selected }: { selected: VenueObject }) {
   );
 }
 
+function ShapeRotateControls({ selected }: { selected: VenueObject }) {
+  const { update } = useStore();
+  const [angle, setAngle] = React.useState(0);
+  const [msg, setMsg] = React.useState('');
+  const isVector = selected.kind === 'vector';
+  // Sudut live dari shape — berubah mengikuti putaran kanvas/panel karena
+  // rotasi disimpan persisten (bukan di-bake ke titik).
+  const current = rotationOf(selected);
+
+  const apply = (delta: number) => {
+    if (!Number.isFinite(delta) || delta === 0) {
+      setMsg('Masukkan sudut ≠ 0° (−360…360).');
+      return;
+    }
+    if (delta < -360 || delta > 360) {
+      setMsg('Sudut di luar −360…360°.');
+      return;
+    }
+    try {
+      // Pola yang sama dengan SeatLayoutControls: hitung dari posisi saat
+      // ini, commit 1 langkah undo, lalu reset form ke nol.
+      const next = normalizeAngle(current + delta);
+      update((d) => ({
+        ...d,
+        objects: d.objects.map((o) => (o.id === selected.id ? rotateShapeBy(o, delta) : o)),
+      }));
+      setAngle(0);
+      setMsg(`Diputar ${delta}° (total ${next}°). Satu langkah undo.`);
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : 'Rotasi tidak dapat diterapkan.');
+    }
+  };
+
+  return (
+    <section className="shape-rotate-controls" aria-label="Putar shape">
+      <h4 className="subh">Putar shape</h4>
+      <p className="muted">
+        {isVector
+          ? `Terhadap pusat bbox kanvas${current !== 0 ? ` (saat ini ${Math.round(current * 100) / 100}°)` : ''}. Path d tetap verbatim.`
+          : `Terhadap pusat bbox shape${current !== 0 ? ` (saat ini ${Math.round(current * 100) / 100}°)` : ''}. ID, label, dan harga tetap.`}
+      </p>
+      <Num label="Sudut (°)" value={angle} onChange={setAngle} min={-360} max={360} />
+      <div className="row" role="group" aria-label="Preset sudut putar">
+        <button type="button" onClick={() => apply(-15)} aria-label="Putar −15 derajat">−15°</button>
+        <button type="button" onClick={() => apply(15)} aria-label="Putar +15 derajat">+15°</button>
+        <button type="button" onClick={() => apply(90)} aria-label="Putar 90 derajat">90°</button>
+      </div>
+      <button type="button" className="apply" onClick={() => apply(angle)} disabled={!Number.isFinite(angle) || angle === 0}>
+        <RotateCw size={15} aria-hidden="true" />Putar shape
+      </button>
+      {current !== 0 && (
+        <button type="button" className="apply" onClick={() => {
+          update((d) => ({
+            ...d,
+            objects: d.objects.map((o) => (o.id === selected.id ? rotateShapeBy(o, -rotationOf(o)) : o)),
+          }));
+          setAngle(0);
+          setMsg('Rotasi direset ke 0°.');
+        }}>Reset 0°</button>
+      )}
+      {msg && <p className="muted" role="status">{msg}</p>}
+    </section>
+  );
+}
+
 function FocusSectionLayout({ focusId, onEnterSection }: { focusId: string; onEnterSection: (id: string) => void }) {
   const { state } = useStore();
   const { doc, selectedId } = state;
@@ -625,6 +691,10 @@ function ObjectProps({ p, selected, markOk, markReason }: {
           update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === selected.id ? { ...o, width: v } : o)) }));
         }} min={4} max={120} />
       )}
+      {!isRow && (selected.kind === 'stage' || selected.kind === 'section'
+        || selected.kind === 'import-draft' || selected.kind === 'vector') && (
+        <ShapeRotateControls key={`rotate-${selected.id}`} selected={selected} />
+      )}
       {!p.focusId && selected.isSection && (
         <div className="row"><button onClick={() => p.onEnterSection(selected.id)}>Edit isi section</button></div>
       )}
@@ -641,10 +711,13 @@ function ObjectProps({ p, selected, markOk, markReason }: {
       )}
       {selected.guess && <p className="muted">Tebakan import: {selected.guess} · keyakinan {Math.round(selected.source.confidence * 100)}% — wajib dikoreksi.</p>}
       {selected.kind === 'vector' && (
-        <p className="muted">Seret objek untuk memindahkan, atau gunakan gagang sudut untuk mengubah ukuran.</p>
+        <p className="muted">Seret untuk memindahkan · gagang sudut untuk skala · gagang atas untuk memutar.</p>
       )}
-      {selected.kind !== 'vector' && !isRow && selected.points.length >= 2 && (
-        <p className="muted">Seret objek untuk memindahkan, geser titik untuk edit bentuk, atau gunakan gagang sudut untuk skala.</p>
+      {selected.kind === 'aisle' && (
+        <p className="muted">Seret untuk memindahkan · geser titik ujung untuk edit garis.</p>
+      )}
+      {selected.kind !== 'vector' && selected.kind !== 'aisle' && !isRow && selected.points.length >= 2 && (
+        <p className="muted">Seret untuk memindahkan · geser titik untuk edit bentuk · gagang atas untuk memutar.</p>
       )}
       {isRow && selected.seats.length > 0 && (
         <div>

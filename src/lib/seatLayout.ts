@@ -1,5 +1,5 @@
 import type { Pt, Seat, VenueObject } from './venue';
-import { discInside, SEAT_R, sectionGeomFor } from './contain';
+import { discInside, resolvedPoints, SEAT_R, sectionGeomFor } from './contain';
 
 export interface SeatTransform { rotation: number; skewX: number; skewY: number; scaleX: number; scaleY: number; dx: number; dy: number }
 export const IDENTITY_TRANSFORM: SeatTransform = { rotation: 0, skewX: 0, skewY: 0, scaleX: 100, scaleY: 100, dx: 0, dy: 0 };
@@ -31,13 +31,17 @@ export function fitSeatsToShape(objects: VenueObject[], target: VenueObject, gap
   const obstacles = objects.flatMap(o => o.seats).filter(s => !targetIds.has(s.id));
   const aisles = objects.filter(o => o.kind === 'aisle');
   function clearOfAisles(x: number, y: number): boolean {
-    return aisles.every(aisle => aisle.points.slice(1).every((end, i) => {
-      const start = aisle.points[i];
-      const dx = end[0]-start[0], dy = end[1]-start[1];
-      const length = dx*dx+dy*dy;
-      const t = length ? Math.max(0, Math.min(1, ((x-start[0])*dx+(y-start[1])*dy)/length)) : 0;
-      return Math.hypot(x-start[0]-t*dx, y-start[1]-t*dy) >= seatRadius + margin + aisle.width/2;
-    }));
+    // Lorong terputar ikut sebagai penghalang (koordinat kanvas hasil resolve).
+    return aisles.every(aisle => {
+      const pts = resolvedPoints(aisle);
+      return pts.slice(1).every((end, i) => {
+        const start = pts[i];
+        const dx = end[0]-start[0], dy = end[1]-start[1];
+        const length = dx*dx+dy*dy;
+        const t = length ? Math.max(0, Math.min(1, ((x-start[0])*dx+(y-start[1])*dy)/length)) : 0;
+        return Math.hypot(x-start[0]-t*dx, y-start[1]-t*dy) >= seatRadius + margin + aisle.width/2;
+      });
+    });
   }
   const groups = new Map<string, Seat[]>();
   for (const object of objects) for (const seat of object.seats) {

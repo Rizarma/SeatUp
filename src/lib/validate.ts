@@ -52,6 +52,9 @@ function checkObject(o: unknown, path: string, errors: string[]): void {
       errors.push(`${path}: color tak valid`);
     }
   }
+  if (v['rotation'] !== undefined && (typeof v['rotation'] !== 'number' || !Number.isFinite(v['rotation'] as number))) {
+    errors.push(`${path}: rotation tak valid`);
+  }
   if (v['isSection'] === true) {
     const kind = v['kind'] as string;
     const pts = v['points'];
@@ -86,6 +89,8 @@ function checkObject(o: unknown, path: string, errors: string[]): void {
     if (t !== null && t !== undefined) {
       if (typeof t !== 'object' || typeof t['tx'] !== 'number' || typeof t['ty'] !== 'number' || typeof t['scale'] !== 'number') {
         errors.push(`${path}: vTransform tak valid`);
+      } else if (t['rotation'] !== undefined && (typeof t['rotation'] !== 'number' || !Number.isFinite(t['rotation'] as number))) {
+        errors.push(`${path}: vTransform.rotation tak valid`);
       }
     }
     const st = v['svgStroke'] as Record<string, unknown> | null | undefined;

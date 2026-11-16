@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   SEAT_R, flattenPath, isClosedPath, pointInside, discInside, classifySeats, sectionGeomFor, revalidateSeats,
+  resolvedPoints, shapeCenter, vectorCanvasCenter,
 } from './contain';
 import type { VenueObject } from './venue';
 import { makeObject } from './venue';
@@ -96,6 +97,45 @@ describe('classifySeats + sectionGeomFor', () => {
     o.d = 'M0 0H10';
     expect(sectionGeomFor(o)).toBeNull();
     expect(isClosedPath(o.d)).toBe(false);
+  });
+  it('rotasi vector 90° memutar geometri terhadap pusat bbox kanvas', () => {
+    const o = makeObject({ kind: 'vector', label: 'V' });
+    o.isSection = true;
+    // persegi panjang 100×20 di (0,0): pusat kanvas (50,10)
+    o.d = 'M0 0H100V20H0Z';
+    o.vTransform = { tx: 0, ty: 0, scale: 1, rotation: 90 };
+    o.svgFillRule = 'nonzero';
+    const g = sectionGeomFor(o);
+    expect(g).not.toBeNull();
+    const xs = g!.rings.flat().map((p) => p[0]);
+    const ys = g!.rings.flat().map((p) => p[1]);
+    // setelah 90°: lebar 20 di x, tinggi 100 di y, pusat tetap (50,10)
+    expect(Math.min(...xs)).toBeCloseTo(40, 5);
+    expect(Math.max(...xs)).toBeCloseTo(60, 5);
+    expect(Math.min(...ys)).toBeCloseTo(-40, 5);
+    expect(Math.max(...ys)).toBeCloseTo(60, 5);
+  });
+  it('vectorCanvasCenter = pusat bbox kanvas tanpa rotasi', () => {
+    const o = makeObject({ kind: 'vector', label: 'V' });
+    o.d = 'M0 0H100V20H0Z';
+    o.vTransform = { tx: 10, ty: 20, scale: 2, rotation: 45 };
+    expect(vectorCanvasCenter(o)).toEqual([110, 40]);
+  });
+  it('rotasi section points 90° memutar geometri terhadap pusat bbox', () => {
+    const o = secObj([[0, 0], [100, 0], [100, 20], [0, 20]]);
+    o.rotation = 90;
+    const g = sectionGeomFor(o);
+    expect(g).not.toBeNull();
+    const xs = g!.rings.flat().map((p) => p[0]);
+    const ys = g!.rings.flat().map((p) => p[1]);
+    expect(Math.min(...xs)).toBeCloseTo(40, 5);
+    expect(Math.max(...xs)).toBeCloseTo(60, 5);
+    expect(Math.min(...ys)).toBeCloseTo(-40, 5);
+    expect(Math.max(...ys)).toBeCloseTo(60, 5);
+    // resolvedPoints 1:1 dengan base (vertex tetap valid) + pusat stabil
+    expect(resolvedPoints(o)).toHaveLength(4);
+    expect(shapeCenter(o)).toEqual([50, 10]);
+    expect(resolvedPoints({ ...o, rotation: 0 })).toEqual(o.points);
   });
 });
 

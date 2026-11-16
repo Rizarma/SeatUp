@@ -3,9 +3,9 @@ import type { SeatStatus } from '../lib/venue';
 import { useStore } from '../store';
 import { fitViewBox, viewBoxStr } from '../lib/camera';
 import type { ViewBox } from '../lib/camera';
-import { sectionGeomFor } from '../lib/contain';
+import { sectionGeomFor, shapeCenter, vectorCanvasCenter } from '../lib/contain';
 import { sectionColorById } from '../lib/sectionColor';
-import { bboxOf, toPointsString } from '../lib/geometry';
+import { bboxOf, rotationOf, toPointsString } from '../lib/geometry';
 import { Plus, Minus, Maximize, ChevronDown, X, ArrowLeft } from 'lucide-react';
 
 const ORPHAN_ID = '__orphan__';
@@ -237,12 +237,23 @@ export default function Preview() {
                   onClick={() => { if (activeId !== o.id) enter(o.id); }}
                   onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && activeId !== o.id) { e.preventDefault(); enter(o.id); } }}>
                   {o.kind === 'vector' && o.d ? (
+                    <g transform={o.vTransform?.rotation ? (() => {
+                      const c = vectorCanvasCenter(o);
+                      return c ? `rotate(${o.vTransform.rotation} ${c[0]} ${c[1]})` : undefined;
+                    })() : undefined}>
                     <path className="preview-section-shape" d={o.d}
                       transform={o.vTransform ? `translate(${o.vTransform.tx} ${o.vTransform.ty}) scale(${o.vTransform.scale})` : undefined}
                       fillRule={o.svgFillRule ?? 'nonzero'} vectorEffect="non-scaling-stroke"
                       fill={c} fillOpacity={activeId === o.id ? 0.22 : 0.16} stroke={c} strokeWidth={activeId === o.id ? 3 : 2} />
+                    </g>
                   ) : (
-                    <polygon className="preview-section-shape" points={toPointsString(o.points)} vectorEffect="non-scaling-stroke"
+                    <polygon className="preview-section-shape" points={toPointsString(o.points)}
+                      transform={(() => {
+                        const sr = rotationOf(o);
+                        const sc = sr !== 0 ? shapeCenter(o) : null;
+                        return sc ? `rotate(${sr} ${sc[0]} ${sc[1]})` : undefined;
+                      })()}
+                      vectorEffect="non-scaling-stroke"
                       fill={c} fillOpacity={activeId === o.id ? 0.22 : 0.16} stroke={c} strokeWidth={activeId === o.id ? 3 : 2} />
                   )}
                   {activeId !== o.id && (
@@ -255,8 +266,11 @@ export default function Preview() {
             if (o.kind === 'vector' && o.d && o.vTransform) {
               const t = o.vTransform;
               const st = o.svgStroke ?? null;
+              const prot = t.rotation ?? 0;
+              const pc = Number.isFinite(prot) && prot !== 0 ? vectorCanvasCenter(o) : null;
               return (
-                <g key={o.id} transform={`translate(${t.tx} ${t.ty}) scale(${t.scale})`}>
+                <g key={o.id} transform={pc ? `rotate(${prot} ${pc[0]} ${pc[1]})` : undefined}>
+                <g transform={`translate(${t.tx} ${t.ty}) scale(${t.scale})`}>
                   <path
                     d={o.d}
                     fill={o.svgFill ?? 'black'}
@@ -276,15 +290,19 @@ export default function Preview() {
                       stroke={colorOf(o.id)} strokeWidth={1.5 / t.scale} pointerEvents="none" />
                   )}
                 </g>
+                </g>
               );
             }
             if (o.kind === 'stage') {
               const box = bboxOf(o.points);
               const sx = box ? box.cx : 0;
               const sy = box ? box.cy : 0;
+              const strot = rotationOf(o);
+              const stc = strot !== 0 ? shapeCenter(o) : null;
               return (
                 <g key={o.id}>
-                  <polygon points={toPointsString(o.points)} fill="#cbd5e1" stroke="#475569">
+                  <polygon points={toPointsString(o.points)} fill="#cbd5e1" stroke="#475569"
+                    transform={stc ? `rotate(${strot} ${stc[0]} ${stc[1]})` : undefined}>
                     <title>{o.label}</title>
                   </polygon>
                   <text x={sx} y={sy} textAnchor="middle" className="lbl preview-hover-lbl" pointerEvents="none">{o.label}</text>
@@ -292,7 +310,10 @@ export default function Preview() {
               );
             }
             if (o.kind === 'aisle') {
-              return <polyline key={o.id} points={toPointsString(o.points)} fill="none" stroke="#cbd5e1" strokeWidth={o.width} strokeLinecap="round" />;
+              const arot = rotationOf(o);
+              const ac = arot !== 0 ? shapeCenter(o) : null;
+              return <polyline key={o.id} points={toPointsString(o.points)} fill="none" stroke="#cbd5e1" strokeWidth={o.width} strokeLinecap="round"
+                transform={ac ? `rotate(${arot} ${ac[0]} ${ac[1]})` : undefined} />;
             }
 
             return null;

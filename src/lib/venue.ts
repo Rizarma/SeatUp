@@ -52,10 +52,18 @@ export interface VenueObject {
   color?: string | null;
   /** Section pemilik baris ini (diisi saat baris dibuat). */
   sectionId?: string | null;
+  /**
+   * Rotasi shape points (stage/section/aisle/import-draft) dalam derajat,
+   * terhadap pusat bbox points — dinormalisasi ke (-180, 180].
+   * Vector memakai vTransform.rotation; baris kursi memakai SeatLayoutControls.
+   */
+  rotation?: number;
   /** Path mentah untuk kind 'vector' — dipertahankan verbatim, tidak diubah editor. */
   d?: string | null;
-  /** Transform tampil vektor: canvas = scale*path + (tx,ty). */
-  vTransform?: { tx: number; ty: number; scale: number } | null;
+  /** Transform tampil vektor: canvas = scale*path + (tx,ty), lalu putar
+   * `rotation` (derajat) terhadap pusat bbox kanvas — pola pusat-putar yang
+   * sama dengan transformSeats di canvas editor. */
+  vTransform?: { tx: number; ty: number; scale: number; rotation?: number } | null;
   /** Warna + fill-rule asli path vektor (holes via evenodd tetap utuh). */
   svgFill?: string | null;
   svgFillRule?: 'evenodd' | 'nonzero' | null;
