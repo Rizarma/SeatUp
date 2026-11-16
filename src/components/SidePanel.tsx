@@ -590,7 +590,7 @@ function ObjectProps({ p, selected, markOk, markReason }: {
     : selected.kind === 'stage' ? Podium
     : isRow ? Armchair
     : selected.kind === 'import-draft' ? FileUp : Shapes;
-  const subText = `${kindDisplay(selected)}${selected.isSection && (selected.kind === 'section' || selected.kind === 'vector') ? ' · Section' : ''}${selected.seats.length > 0 ? ` · ${selected.seats.length} kursi` : ''}${invalidN > 0 ? ` · ${invalidN} invalid` : ''}`;
+  const subText = `${kindDisplay(selected)}${selected.seats.length > 0 ? ` · ${selected.seats.length} kursi` : ''}${invalidN > 0 ? ` · ${invalidN} invalid` : ''}`;
   return (
     <div className="object-properties">
       <div className="ctxhead ctxhead--stable">
