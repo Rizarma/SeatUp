@@ -1,4 +1,5 @@
 import type { VenueDoc, VenueObject, Seat, ObjKind, SeatStatus } from './venue';
+import { normalizeSectionFlags } from './venue';
 
 const KINDS: ObjKind[] = ['stage', 'aisle', 'section', 'row-straight', 'row-arc', 'import-draft', 'vector'];
 const STATUSES: SeatStatus[] = ['available', 'pick', 'book', 'taken'];
@@ -46,9 +47,19 @@ function checkObject(o: unknown, path: string, errors: string[]): void {
   }
   if (typeof v['width'] !== 'number') errors.push(`${path}: width tak valid`);
   if (typeof v['price'] !== 'number') errors.push(`${path}: price tak valid`);
-  if (v['color'] !== undefined && v['color'] !== null) {
+  if (typeof v['color'] !== 'undefined' && v['color'] !== null) {
     if (typeof v['color'] !== 'string' || !/^(#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$/.test(v['color'])) {
       errors.push(`${path}: color tak valid`);
+    }
+  }
+  if (v['isSection'] === true) {
+    const kind = v['kind'] as string;
+    const pts = v['points'];
+    const n = Array.isArray(pts) ? pts.length : 0;
+    const seats = (v['seats'] as unknown[]) ?? [];
+    const closedOk = kind === 'section' ? v['closed'] === true && n >= 3 : kind === 'vector' ? typeof v['d'] === 'string' && /[Zz]/.test(v['d'] as string) : false;
+    if ((kind !== 'section' && kind !== 'vector') || !closedOk || (Array.isArray(seats) && seats.length > 0)) {
+      errors.push(`${path}: isSection tak valid untuk kind ${kind} (hanya polygon/vector tertutup tanpa kursi)`);
     }
   }
   if (v['rowParams'] !== null && v['rowParams'] !== undefined) {
@@ -123,6 +134,12 @@ export function parseVenueJson(text: string): { doc: VenueDoc | null; errors: st
     raw = JSON.parse(text);
   } catch {
     return { doc: null, errors: ['JSON tidak bisa diparse'] };
+  }
+  // Dokumen lama dengan flag section tak valid tetap dibuka: lucuti dulu.
+  const r = raw as { objects?: VenueObject[] };
+  if (r && typeof r === 'object' && Array.isArray(r.objects)) {
+    const norm = normalizeSectionFlags(r.objects);
+    if (norm.objects !== r.objects) raw = { ...(r as object), objects: norm.objects };
   }
   const v = validateVenueDoc(raw);
   if (!v.ok) return { doc: null, errors: v.errors };

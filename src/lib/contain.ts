@@ -344,13 +344,14 @@ export function sectionGeomFor(obj: VenueObject): SectionGeom | null {
   if (!obj.isSection) return null;
   if (obj.kind === 'vector') {
     if (!obj.d) return null;
+    if (!isClosedPath(obj.d)) return null;
     const rings = flattenPath(obj.d);
     if (rings.length === 0) return null;
     const t = obj.vTransform ?? { tx: 0, ty: 0, scale: 1 };
     const mapped = rings.map((r) => r.map(([x, y]) => [t.tx + x * t.scale, t.ty + y * t.scale] as Pt));
     return { rings: mapped, rule: obj.svgFillRule ?? 'nonzero' };
   }
-  if (obj.kind === 'stage' || obj.kind === 'section' || obj.kind === 'import-draft') {
+  if (obj.kind === 'section') {
     if (!obj.closed || obj.points.length < 3) return null;
     return { rings: [obj.points.map((p) => [p[0], p[1]] as Pt)], rule: 'evenodd' };
   }

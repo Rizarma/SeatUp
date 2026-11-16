@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useMemo, useReducer } from 'react';
 import type { VenueDoc } from './lib/venue';
-import { emptyVenue } from './lib/venue';
+import { emptyVenue, normalizeSectionFlags } from './lib/venue';
 import { revalidateSeats } from './lib/contain';
 
 export type Tool = 'hand' | 'select' | 'seat' | 'polygon' | 'stage' | 'rectangle' | 'circle' | 'aisle' | 'row';
@@ -34,8 +34,10 @@ function clone(d: VenueDoc): VenueDoc {
 function reducer(s: State, a: Action): State {
   switch (a.t) {
     case 'commit': {
-      const rev = revalidateSeats(a.doc.objects);
-      const doc = rev.objects === a.doc.objects ? a.doc : { ...a.doc, objects: rev.objects };
+      const norm = normalizeSectionFlags(a.doc.objects);
+      const base = norm.objects === a.doc.objects ? a.doc : { ...a.doc, objects: norm.objects };
+      const rev = revalidateSeats(base.objects);
+      const doc = rev.objects === base.objects ? base : { ...base, objects: rev.objects };
       const alive = new Set(doc.objects.flatMap((o) => o.seats.map((x) => x.id)));
       return {
         ...s,
@@ -79,9 +81,11 @@ function reducer(s: State, a: Action): State {
     case 'tool':
       return { ...s, tool: a.tool };
     case 'load': {
-      const rev = revalidateSeats(a.doc.objects);
+      const norm = normalizeSectionFlags(a.doc.objects);
+      const base = norm.objects === a.doc.objects ? a.doc : { ...a.doc, objects: norm.objects };
+      const rev = revalidateSeats(base.objects);
       return {
-        doc: rev.objects === a.doc.objects ? a.doc : { ...a.doc, objects: rev.objects },
+        doc: rev.objects === base.objects ? base : { ...base, objects: rev.objects },
         past: [], future: [], selectedId: null, selectedSeatIds: [], tool: 'select', dirty: false,
       };
     }

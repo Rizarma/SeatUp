@@ -12,6 +12,7 @@ import type { DraftShape } from './lib/raster';
 import { dragSeatLayout } from './lib/dragSeats';
 import { classifySeats, sectionGeomFor } from './lib/contain';
 import { validateVenueDoc, parseVenueJson } from './lib/validate';
+import { markEligibility } from './lib/panelContext';
 import { saveLocal, loadLocal, downloadJson, readTextFile, readImageFile } from './lib/storage';
 import { StoreProvider, useStore } from './store';
 import type { Tool } from './store';
@@ -286,6 +287,7 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
         canCommit={!!anchor && !!effGeom && validCount > 0}
         onMarkSection={() => {
           if (!selectedObj) return;
+          if (!markEligibility(selectedObj).ok) return;
           update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === selectedObj.id ? { ...o, isSection: true } : o)) }));
         }}
         onUnmarkSection={() => {

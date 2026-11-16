@@ -287,3 +287,27 @@ export function sampleVenue(): VenueDoc {
   doc.objects = [stage, arc, side];
   return doc;
 }
+
+/**
+ * Normalisasi flag section: hanya kind 'section' (polygon tertutup) dan
+ * 'vector' (path tertutup) tanpa kursi yang boleh isSection. Flag tak valid
+ * dari dokumen lama dilucuti (false) agar impor/penyimpanan lama tetap
+ * terbuka; keputusan dilapor ke pemanggil via `stripped`.
+ */
+export function normalizeSectionFlags<T extends VenueObject>(objects: T[]): { objects: T[]; stripped: string[] } {
+  const stripped: string[] = [];
+  let changed = false;
+  const next = objects.map((o) => {
+    if (!o.isSection) return o;
+    const eligible =
+      (o.kind === 'section' && o.closed && o.points.length >= 3 && o.seats.length === 0) ||
+      (o.kind === 'vector' && !!o.d && /[Zz]/.test(o.d));
+    if (!eligible) {
+      changed = true;
+      stripped.push(o.id);
+      return { ...o, isSection: false };
+    }
+    return o;
+  });
+  return { objects: changed ? next : objects, stripped };
+}

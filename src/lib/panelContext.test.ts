@@ -13,9 +13,18 @@ describe('resolveContext', () => {
 });
 
 describe('markEligibility', () => {
-  it('lorong dan baris ditolak dengan alasan', () => {
+  it('panggung, lorong dan baris ditolak dengan alasan', () => {
+    expect(markEligibility({ kind: 'stage', closed: true, points: [1, 2, 3] }).ok).toBe(false);
     expect(markEligibility({ kind: 'aisle' }).ok).toBe(false);
     expect(markEligibility({ kind: 'row-straight' }).ok).toBe(false);
+    expect(markEligibility({ kind: 'row-arc' }).ok).toBe(false);
+  });
+  it('draf impor wajib dikoreksi dulu, tak bisa langsung jadi section', () => {
+    const r = markEligibility({ kind: 'import-draft', closed: true, points: [1, 2, 3] });
+    expect(r.ok).toBe(false);
+  });
+  it('objek berisi kursi ditolak', () => {
+    expect(markEligibility({ kind: 'section', closed: true, points: [1, 2, 3], seats: [1] }).ok).toBe(false);
   });
   it('vektor tertutup boleh, terbuka ditolak', () => {
     expect(markEligibility({ kind: 'vector', d: 'M0 0H10V10H0Z' }).ok).toBe(true);
