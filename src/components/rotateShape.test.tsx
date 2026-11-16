@@ -69,36 +69,6 @@ function ptr(type: string, init: PointerEventInit & { clientX?: number; clientY?
   return new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, ...init });
 }
 
-function setNumber(input: HTMLInputElement, v: string) {
-  const nativeSet = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
-  nativeSet.call(input, v);
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-}
-
-it('panel: putar stage 90° menyimpan sudut (points utuh), panel ikut tampil, 1 undo', async () => {
-  const { host, save, pickObject } = await mount();
-  await pickObject('Panggung');
-  const sec = host.querySelector('[aria-label="Putar shape"]')!;
-  expect(sec).not.toBeNull();
-  const input = sec.querySelector('input[type="number"]') as HTMLInputElement;
-  await act(async () => setNumber(input, '90'));
-  const apply = sec.querySelector('button.apply') as HTMLButtonElement;
-  await act(async () => apply.click());
-  let saved = await save();
-  const s = saved.objects.find((o: VenueObject) => o.id === 'stage-1');
-  expect(s.rotation).toBe(90);
-  expect(s.points).toEqual(stage.points);
-  expect(s.label).toBe('Panggung');
-  // Panel menampilkan sudut live, bukan reset ke 0.
-  await pickObject('Panggung');
-  expect(host.querySelector('[aria-label="Putar shape"]')!.textContent).toContain('saat ini 90°');
-  await act(async () => (host.querySelector('[aria-label^="Urungkan"]') as HTMLButtonElement).click());
-  saved = await save();
-  const back = saved.objects.find((o: VenueObject) => o.id === 'stage-1');
-  expect(back.rotation ?? 0).toBe(0);
-  expect(back.points).toEqual(stage.points);
-});
-
 it('kanvas: drag gagang putar menyimpan sudut + gagang mengorbit; Esc membatalkan', async () => {
   const { host, svg, save, toClient, pickObject } = await mount();
   await pickObject('Panggung');
@@ -139,13 +109,36 @@ it('lorong: tanpa panel putar dan tanpa gagang putar', async () => {
   expect(host.textContent).toContain('geser titik ujung untuk edit garis');
 });
 
-it('panel + kanvas: vector menyimpan rotation, path verbatim, render rotate', async () => {
+it('warna section vector: preset menulis color + svgFill agar shape ikut berubah', async () => {
   const { host, svg, save, pickObject } = await mount();
   await pickObject('Kotak');
-  const sec = host.querySelector('[aria-label="Putar shape"]')!;
-  const input = sec.querySelector('input[type="number"]') as HTMLInputElement;
-  await act(async () => setNumber(input, '90'));
-  await act(async () => (sec.querySelector('button.apply') as HTMLButtonElement).click());
+  // Tandai sebagai section dulu agar editor warna tampil.
+  await act(async () => (host.querySelector('label.document-option input') as HTMLInputElement).click());
+  const swatch = host.querySelector('[aria-label="Pilih warna #38BDF8"]') as HTMLButtonElement;
+  expect(swatch).not.toBeNull();
+  await act(async () => swatch.click());
+  const saved = await save();
+  const v = saved.objects.find((o: VenueObject) => o.id === 'vec-1');
+  expect(v.color).toBe('#38BDF8');
+  expect(v.svgFill).toBe('#38BDF8');
+  // Bahasa visual section sama dengan polygon: fill warna identitas pudar,
+  // bukan solid dekorasi.
+  const vecPaths = [...svg().querySelectorAll('path')].filter((p) => p.getAttribute('d') === 'M0 0H200V100H0Z');
+  const base = vecPaths.find((p) => p.getAttribute('fill') !== 'none')!;
+  expect(base.getAttribute('fill')).toBe('#38BDF8');
+  expect(base.getAttribute('fill-opacity')).toBe('0.18');
+});
+
+it('kanvas: vector menyimpan rotation via gagang, path verbatim, render rotate', async () => {
+  const { svg, save, toClient, pickObject } = await mount();
+  await pickObject('Kotak');
+  // Pusat flatten (800,150), box 200x100 -> gagang di (800, 150-78).
+  const handle = svg().querySelector('[data-rotate-handle="vec-1"]') as Element;
+  expect(handle).not.toBeNull();
+  // Sudut awal -90°; geser ke 0° = +90°.
+  await act(async () => { handle.dispatchEvent(ptr('pointerdown', toClient(800, 72))); });
+  await act(async () => { svg().dispatchEvent(ptr('pointermove', toClient(878, 150))); });
+  await act(async () => { svg().dispatchEvent(ptr('pointerup', toClient(878, 150))); });
   const saved = await save();
   const v = saved.objects.find((o: VenueObject) => o.id === 'vec-1');
   expect(v.vTransform.rotation).toBe(90);

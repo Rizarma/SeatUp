@@ -567,6 +567,12 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           const secColor = o.isSection ? sectionColor(o.id) : null;
           const rot = t.rotation ?? 0;
           const rc = Number.isFinite(rot) && rot !== 0 ? (vectorCenters.get(o.id) ?? vectorCanvasCenter(o)) : null;
+          // Section vector memakai bahasa visual yang sama dengan polygon
+          // section: fill warna identitas + outline, bukan fill dekorasi solid.
+          const fill = secColor ?? o.svgFill ?? 'black';
+          const fillOpacity = secColor ? 0.18 : o.svgFillOpacity ?? undefined;
+          const stroke = secColor ?? (st ? st.color : 'none');
+          const strokeWidth = secColor ? 2 / t.scale : st ? st.width : undefined;
           return (
             <g key={o.id} {...sectionEvents} aria-label={o.label}>
               <g transform={rc ? `rotate(${rot} ${rc[0]} ${rc[1]})` : undefined}>
@@ -576,12 +582,12 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
               >
                 <path
                   d={o.d}
-                  fill={o.svgFill ?? 'black'}
-                  fillOpacity={o.svgFillOpacity ?? undefined}
+                  fill={fill}
+                  fillOpacity={fillOpacity}
                   vectorEffect="non-scaling-stroke"
                   fillRule={o.svgFillRule ?? 'nonzero'}
-                  stroke={st ? st.color : 'none'}
-                  strokeWidth={st ? st.width : undefined}
+                  stroke={stroke}
+                  strokeWidth={strokeWidth}
                   strokeLinecap={st?.linecap as 'butt' | 'round' | 'square' | undefined}
                   strokeLinejoin={st?.linejoin as 'miter' | 'round' | 'bevel' | undefined}
                   strokeDasharray={st?.dash}
@@ -592,10 +598,6 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
                 />
                 {isSel && (
                   <path d={o.d} fill="none" stroke="#2563eb" strokeWidth={2.5 / t.scale} pointerEvents="none" style={selStyle} />
-                )}
-                {secColor && (
-                  <path d={o.d} fill={secColor} fillOpacity={0.25} fillRule={o.svgFillRule ?? 'nonzero'}
-                    stroke={secColor} strokeWidth={1.5 / t.scale} strokeOpacity={0.9} pointerEvents="none" />
                 )}
               </g>
               </g>

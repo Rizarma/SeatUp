@@ -321,12 +321,6 @@ label.btn.filepick input { max-width: 100%; }
 .seat-layout-controls .fld { margin-bottom: 8px; }
 .seat-layout-controls .muted { overflow-wrap: anywhere; }
 .seat-layout-controls > button { width: 100%; min-height: 40px; }
-/* Putar shape: ritme yang sama (label 88px + preset sejajar + tombol penuh). */
-.shape-rotate-controls { border-top: 1px solid var(--border); margin: 12px 0 0; padding: 12px 0 2px; }
-.shape-rotate-controls .fld { margin-bottom: 8px; }
-.shape-rotate-controls .muted { overflow-wrap: anywhere; }
-.shape-rotate-controls .row > button { flex: 1; min-height: 40px; }
-.shape-rotate-controls > button.apply { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 40px; margin-top: 8px; }
 /* Section di dalam body: divider penuh selebar panel, bukan kartu bersarang */
 .pbody > section { margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px; }
 .pbody > section:first-child { margin-top: -14px; }
@@ -533,10 +527,30 @@ label.btn.filepick input { max-width: 100%; }
 .object-properties .document-option input:disabled { opacity:0.45; cursor:not-allowed; }
 .object-properties .muted { line-height:1.5; margin:8px 0 0; }
 .object-properties .section-color-config { margin-top:14px; }
-.object-properties .section-color-config .row { padding-left:96px; gap:6px; margin-top:10px; }
-.object-properties .section-color-config .row button { width:28px !important; height:28px !important; min-height:28px !important; border-radius:6px !important; }
-.object-properties input[type="color"] { padding:4px; cursor:pointer; }
+/* Satu baris: label + swatch terpilih. Swatch aktif = ring aksen. */
+.section-color-row { display:flex; align-items:center; gap:8px; font-size:12.5px; }
+.section-color-row > span { color:var(--muted); font-size:12px; flex:0 0 auto; }
+.section-color-row .color-swatches { display:flex; align-items:center; gap:6px; margin-left:auto; }
+.color-swatches button {
+  width:26px; height:26px; min-height:0; padding:0;
+  border-radius:50%; border:1px solid rgb(15 23 42 / 0.15); cursor:pointer;
+}
+.color-swatches button.on { border-color:transparent; box-shadow:0 0 0 2px #fff, 0 0 0 4px var(--accent); }
+/* Sumur kustom: input color native transparan menutupi ikon pelangi. */
+.color-swatches .custom-well {
+  position:relative; width:26px; height:26px; border-radius:50%;
+  display:grid; place-items:center; overflow:hidden; cursor:pointer;
+  border:1px dashed rgb(15 23 42 / 0.35); color:#0f172a;
+  background:conic-gradient(#f87171, #fbbf24, #34d399, #38bdf8, #a78bfa, #f87171);
+}
+.color-swatches .custom-well.on { border-style:solid; border-color:transparent; box-shadow:0 0 0 2px #fff, 0 0 0 4px var(--accent); color:#fff; }
+.color-swatches .custom-well.on svg { filter:drop-shadow(0 1px 2px rgb(0 0 0 / 0.55)); }
+.color-swatches .custom-well input[type="color"] { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+.color-swatches .custom-well svg { pointer-events:none; }
 .object-properties .object-details > .row { margin-top:12px; }
 .object-properties .object-details > .row:first-child { margin-top:0; }
 .object-properties .object-details > .row > button { flex:1; min-height:40px; }
+/* Tombol masuk section di bawah warna: full-width seperti baris detail. */
+.object-properties .object-config-group > .section-entry-row { margin-top:12px; }
+.object-properties .object-config-group > .section-entry-row > button { flex:1; min-height:40px; }
 .object-properties .object-danger > button { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:40px; }

@@ -1,11 +1,10 @@
 import React from 'react';
 import SeatLayoutControls from './SeatLayoutControls';
 import {
-  Armchair, Circle, Footprints, Hand, Podium, Download, FileUp, FolderOpen, Image as ImageIcon, Layers, PenTool, Save,
-  Shapes, Square, Trash2, TriangleAlert, Upload, RotateCw,
+  Armchair, Circle, Footprints, Hand, Plus, Podium, Download, FileUp, FolderOpen, Image as ImageIcon, Layers, PenTool, Save,
+  Shapes, Square, Trash2, TriangleAlert, Upload,
 } from 'lucide-react';
 import type { Pt, RowParams, ObjKind, Seat, VenueObject } from '../lib/venue';
-import { normalizeAngle, rotateShapeBy, rotationOf } from '../lib/geometry';
 
 export type RowForm = RowParams & { price: number };
 import { markEligibility } from '../lib/panelContext';
@@ -492,88 +491,35 @@ function SectionColorEditor({ selected }: { selected: VenueObject }) {
   const current = sectionColorById(state.doc.objects, selected.id);
   const set = (color: string) => {
     if (!isValidSectionColor(color)) return;
-    update((d) => withObject(d, selected.id, { color }));
+    // Vector dirender dari svgFill (bukan color), jadi tulis keduanya agar
+    // shape-nya ikut berubah — color tetap jadi identitas (kursi/legenda).
+    update((d) => withObject(d, selected.id, (o) =>
+      o.kind === 'vector' ? { ...o, color, svgFill: color } : { ...o, color },
+    ));
   };
+  const customActive = !SECTION_PALETTE.some((c) => c.toLowerCase() === current.toLowerCase());
   return (
     <div className="section-color-config">
-      <label className="fld"><span>Warna section</span>
-        <input type="color" aria-label="Warna section" value={isValidSectionColor(selected.color) ? (selected.color as string) : current}
-          onChange={(e) => set(e.target.value)} />
-      </label>
-      <div className="row" role="group" aria-label="Pilihan warna praktis">
-        {SECTION_PALETTE.map((c) => (
-          <button key={c} type="button" aria-label={`Pilih warna ${c}`} title={c}
-            onClick={() => set(c)}
-            style={{ background: c, width: 32, height: 32, minHeight: 32, padding: 0, borderRadius: 8, border: current.toLowerCase() === c.toLowerCase() ? '2px solid #0f172a' : undefined }} />
-        ))}
+      <div className="section-color-row">
+        <span id={`section-color-label-${selected.id}`}>Warna section</span>
+        <div className="color-swatches" role="group" aria-labelledby={`section-color-label-${selected.id}`}>
+          {SECTION_PALETTE.map((c) => {
+            const on = current.toLowerCase() === c.toLowerCase();
+            return (
+              <button key={c} type="button" className={on ? 'on' : ''} aria-label={`Pilih warna ${c}`}
+                aria-pressed={on} title={c} style={{ background: c }} onClick={() => set(c)} />
+            );
+          })}
+          <label className={customActive ? 'custom-well on' : 'custom-well'} title="Warna kustom"
+            style={customActive ? { background: current } : undefined}>
+            <input type="color" aria-label="Warna section"
+              value={isValidSectionColor(selected.color) ? (selected.color as string) : current}
+              onChange={(e) => set(e.target.value)} />
+            <Plus size={14} aria-hidden="true" />
+          </label>
+        </div>
       </div>
-      <p className="muted">Warna yang sama digunakan pada section dan kursinya.</p>
     </div>
-  );
-}
-
-function ShapeRotateControls({ selected }: { selected: VenueObject }) {
-  const { update } = useStore();
-  const [angle, setAngle] = React.useState(0);
-  const [msg, setMsg] = React.useState('');
-  const isVector = selected.kind === 'vector';
-  // Sudut live dari shape — berubah mengikuti putaran kanvas/panel karena
-  // rotasi disimpan persisten (bukan di-bake ke titik).
-  const current = rotationOf(selected);
-
-  const apply = (delta: number) => {
-    if (!Number.isFinite(delta) || delta === 0) {
-      setMsg('Masukkan sudut ≠ 0° (−360…360).');
-      return;
-    }
-    if (delta < -360 || delta > 360) {
-      setMsg('Sudut di luar −360…360°.');
-      return;
-    }
-    try {
-      // Pola yang sama dengan SeatLayoutControls: hitung dari posisi saat
-      // ini, commit 1 langkah undo, lalu reset form ke nol.
-      const next = normalizeAngle(current + delta);
-      update((d) => ({
-        ...d,
-        objects: d.objects.map((o) => (o.id === selected.id ? rotateShapeBy(o, delta) : o)),
-      }));
-      setAngle(0);
-      setMsg(`Diputar ${delta}° (total ${next}°). Satu langkah undo.`);
-    } catch (error) {
-      setMsg(error instanceof Error ? error.message : 'Rotasi tidak dapat diterapkan.');
-    }
-  };
-
-  return (
-    <section className="shape-rotate-controls" aria-label="Putar shape">
-      <h4 className="subh">Putar shape</h4>
-      <p className="muted">
-        {isVector
-          ? `Terhadap pusat bbox kanvas${current !== 0 ? ` (saat ini ${Math.round(current * 100) / 100}°)` : ''}. Path d tetap verbatim.`
-          : `Terhadap pusat bbox shape${current !== 0 ? ` (saat ini ${Math.round(current * 100) / 100}°)` : ''}. ID, label, dan harga tetap.`}
-      </p>
-      <Num label="Sudut (°)" value={angle} onChange={setAngle} min={-360} max={360} />
-      <div className="row" role="group" aria-label="Preset sudut putar">
-        <button type="button" onClick={() => apply(-15)} aria-label="Putar −15 derajat">−15°</button>
-        <button type="button" onClick={() => apply(15)} aria-label="Putar +15 derajat">+15°</button>
-        <button type="button" onClick={() => apply(90)} aria-label="Putar 90 derajat">90°</button>
-      </div>
-      <button type="button" className="apply" onClick={() => apply(angle)} disabled={!Number.isFinite(angle) || angle === 0}>
-        <RotateCw size={15} aria-hidden="true" />Putar shape
-      </button>
-      {current !== 0 && (
-        <button type="button" className="apply" onClick={() => {
-          update((d) => ({
-            ...d,
-            objects: d.objects.map((o) => (o.id === selected.id ? rotateShapeBy(o, -rotationOf(o)) : o)),
-          }));
-          setAngle(0);
-          setMsg('Rotasi direset ke 0°.');
-        }}>Reset 0°</button>
-      )}
-      {msg && <p className="muted" role="status">{msg}</p>}
-    </section>
   );
 }
 
@@ -649,7 +595,6 @@ function ObjectProps({ p, selected, markOk, markReason }: {
           update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === selected.id ? { ...o, label: v } : o)) }));
         }}
       />
-      <p className="muted">Nama tersimpan saat Enter/klik di luar (1 langkah undo).</p>
       </div>
       <div className="object-config-group">
         <label className="document-option">
@@ -659,6 +604,9 @@ function ObjectProps({ p, selected, markOk, markReason }: {
         </label>
         {!selected.isSection && !markOk && <p className="muted">{markReason}.</p>}
         {selected.isSection && <SectionColorEditor selected={selected} />}
+        {!p.focusId && selected.isSection && (
+          <div className="row section-entry-row"><button onClick={() => p.onEnterSection(selected.id)}>Edit isi section</button></div>
+        )}
       </div>
       <div className="object-config-group object-details">
       {selected.sectionId && <p className="muted">Baris terikat section: {doc.objects.find((o) => o.id === selected.sectionId)?.label ?? '(section dihapus)'}.</p>}
@@ -678,7 +626,7 @@ function ObjectProps({ p, selected, markOk, markReason }: {
           </select>
         </label>
       )}
-      {(selected.kind === 'section' || isRow) && (
+      {isRow && (
         <CommittedNum key={`price-${selected.id}`} label="Harga/kursi (Rp)" value={selected.price} onCommit={(v) => {
           update((d) => ({ ...d, objects: d.objects.map((o) => {
             if (o.id !== selected.id) return o;
@@ -690,13 +638,6 @@ function ObjectProps({ p, selected, markOk, markReason }: {
         <CommittedNum key={`width-${selected.id}`} label="Lebar lorong (px)" value={selected.width} onCommit={(v) => {
           update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === selected.id ? { ...o, width: v } : o)) }));
         }} min={4} max={120} />
-      )}
-      {!isRow && (selected.kind === 'stage' || selected.kind === 'section'
-        || selected.kind === 'import-draft' || selected.kind === 'vector') && (
-        <ShapeRotateControls key={`rotate-${selected.id}`} selected={selected} />
-      )}
-      {!p.focusId && selected.isSection && (
-        <div className="row"><button onClick={() => p.onEnterSection(selected.id)}>Edit isi section</button></div>
       )}
       {!p.focusId && isRow && selected.sectionId && doc.objects.some((o) => o.id === selected.sectionId && o.isSection) && (
         <div className="row"><button onClick={() => p.onEnterSection(selected.sectionId as string)}>
@@ -710,14 +651,8 @@ function ObjectProps({ p, selected, markOk, markReason }: {
         <p className="muted">Kelompok ini milik section lain. Susunan di bawah memakai section aktif agar tidak mengubah yang tersembunyi.</p>
       )}
       {selected.guess && <p className="muted">Tebakan import: {selected.guess} · keyakinan {Math.round(selected.source.confidence * 100)}% — wajib dikoreksi.</p>}
-      {selected.kind === 'vector' && (
-        <p className="muted">Seret untuk memindahkan · gagang sudut untuk skala · gagang atas untuk memutar.</p>
-      )}
       {selected.kind === 'aisle' && (
         <p className="muted">Seret untuk memindahkan · geser titik ujung untuk edit garis.</p>
-      )}
-      {selected.kind !== 'vector' && selected.kind !== 'aisle' && !isRow && selected.points.length >= 2 && (
-        <p className="muted">Seret untuk memindahkan · geser titik untuk edit bentuk · gagang atas untuk memutar.</p>
       )}
       {isRow && selected.seats.length > 0 && (
         <div>
