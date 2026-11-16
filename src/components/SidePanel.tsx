@@ -4,13 +4,14 @@ import {
   Armchair, Circle, Footprints, Hand, Podium, Download, FileUp, FolderOpen, Image as ImageIcon, Layers, PenTool, Save,
   Shapes, Square, Trash2, TriangleAlert, Upload,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import type { Pt, RowParams, ObjKind, Seat, VenueObject } from '../lib/venue';
 
 export type RowForm = RowParams & { price: number };
 import { markEligibility } from '../lib/panelContext';
 import { shapeName } from '../lib/shapeLabel';
-import { SECTION_PALETTE, isValidSectionColor, sectionColorFor, sectionOrderIndex } from '../lib/sectionColor';
+import { SECTION_PALETTE, isValidSectionColor, sectionColorById } from '../lib/sectionColor';
+import { withoutObject, withObject } from '../lib/docObjects';
+import { CtxHead, Num, ObjGroup } from './ui';
 import { useStore } from '../store';
 
 interface Props {
@@ -50,31 +51,6 @@ interface Props {
 
 type TabId = 'props' | 'objek' | 'dokumen';
 
-function Num({ label, value, onChange, min, max, step }: {
-  label: string; value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number;
-}) {
-  return (
-    <label className="fld"><span>{label}</span>
-      <input
-        type="number" value={value} min={min} max={max} step={step ?? 1}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
-    </label>
-  );
-}
-
-function CtxHead({ icon: Icon, title, sub }: { icon: LucideIcon; title: string; sub: string }) {
-  return (
-    <div className="ctxhead ctxhead--stable">
-      <span className="ctxicon" aria-hidden="true"><Icon size={18} strokeWidth={2} /></span>
-      <div className="ctxtext">
-        <p className="ctxtitle"><span className="ell" title={title}>{title}</span></p>
-        <p className="muted ctxsub" title={sub}>{sub}</p>
-      </div>
-    </div>
-  );
-}
-
 export default function SidePanel(p: Props) {
   const { state, select, selectSeats, setTool, update } = useStore();
   const { doc, selectedId, selectedSeatIds, tool } = state;
@@ -103,7 +79,7 @@ export default function SidePanel(p: Props) {
     <button type="button" className="object-delete" aria-label={`Hapus ${object.label}`} data-tip={`Hapus ${object.label}`} onClick={() => {
       p.onHoverObject(null);
       const doomedSeats = new Set(object.seats.map((s) => s.id));
-      update(d => ({ ...d, objects: d.objects.filter(o => o.id !== object.id) }));
+      update((d) => withoutObject(d, object.id));
       if (selectedId === object.id) select(null);
       if (p.sectionId === object.id) p.setSectionId(null);
       if (selectedSeatIds.some((id) => doomedSeats.has(id))) {
@@ -193,7 +169,7 @@ export default function SidePanel(p: Props) {
                   {groupSections.map((s) => {
                     const n = doc.objects.flatMap((o) => o.seats).filter((x) => x.sectionId === s.id);
                     const bad = n.filter((x) => x.invalid).length;
-                    const dot = sectionColorFor(s, sectionOrderIndex(doc.objects, s.id));
+                    const dot = sectionColorById(doc.objects, s.id);
                     return (
                       <li key={s.id} onPointerEnter={() => p.onHoverObject(s.id)} onPointerLeave={() => p.onHoverObject(null)} onFocus={() => p.onHoverObject(s.id)} onBlur={() => p.onHoverObject(null)}>
                         <button className={s.id === selectedId ? 'on' : ''} onClick={() => { p.setSectionId(s.id); pickObject(s.id); }}>
@@ -311,15 +287,6 @@ export default function SidePanel(p: Props) {
         </div>
       )}
     </div>
-  );
-}
-
-function ObjGroup({ title, openDefault, children }: { title: string; openDefault?: boolean; children: React.ReactNode }) {
-  return (
-    <details className="ogrp" open={openDefault}>
-      <summary>{title}</summary>
-      <div className="ogrp-body">{children}</div>
-    </details>
   );
 }
 
@@ -516,11 +483,10 @@ function SeatSelectionEditorInner({ entries }: {
 
 function SectionColorEditor({ selected }: { selected: VenueObject }) {
   const { state, update } = useStore();
-  const idx = sectionOrderIndex(state.doc.objects, selected.id);
-  const current = sectionColorFor(selected, idx);
+  const current = sectionColorById(state.doc.objects, selected.id);
   const set = (color: string) => {
     if (!isValidSectionColor(color)) return;
-    update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === selected.id ? { ...o, color } : o)) }));
+    update((d) => withObject(d, selected.id, { color }));
   };
   return (
     <div className="section-color-config">
@@ -668,6 +634,9 @@ function ObjectProps({ p, selected, markOk, markReason }: {
       {selected.guess && <p className="muted">Tebakan import: {selected.guess} · keyakinan {Math.round(selected.source.confidence * 100)}% — wajib dikoreksi.</p>}
       {selected.kind === 'vector' && (
         <p className="muted">Seret objek untuk memindahkan, atau gunakan gagang sudut untuk mengubah ukuran.</p>
+      )}
+      {selected.kind !== 'vector' && !isRow && selected.points.length >= 2 && (
+        <p className="muted">Seret objek untuk memindahkan, geser titik untuk edit bentuk, atau gunakan gagang sudut untuk skala.</p>
       )}
       {isRow && selected.seats.length > 0 && (
         <div>

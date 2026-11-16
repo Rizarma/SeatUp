@@ -22,3 +22,12 @@ export function sectionOrderIndex<T extends { id: string; isSection?: boolean }>
   const i = ids.indexOf(id);
   return i >= 0 ? i : 0;
 }
+
+/** Warna section dari id dokumen — pasangan sectionColorFor + sectionOrderIndex dalam satu panggilan. */
+export function sectionColorById<T extends { id: string; isSection?: boolean; color?: string | null }>(
+  objects: T[],
+  id: string,
+): string {
+  const obj = objects.find((o) => o.id === id) ?? null;
+  return sectionColorFor(obj, sectionOrderIndex(objects, id));
+}

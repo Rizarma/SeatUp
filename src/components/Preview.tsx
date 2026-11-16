@@ -4,7 +4,8 @@ import { useStore } from '../store';
 import { fitViewBox, viewBoxStr } from '../lib/camera';
 import type { ViewBox } from '../lib/camera';
 import { sectionGeomFor } from '../lib/contain';
-import { sectionColorFor } from '../lib/sectionColor';
+import { sectionColorById } from '../lib/sectionColor';
+import { bboxOf, toPointsString } from '../lib/geometry';
 import { Plus, Minus, Maximize, ChevronDown, X, ArrowLeft } from 'lucide-react';
 
 const ORPHAN_ID = '__orphan__';
@@ -26,23 +27,21 @@ export default function Preview() {
 
   const sections = useMemo(() => doc.objects.filter((o) => o.isSection), [doc.objects]);
   const colorOf = (sectionId: string): string => {
-    const idx = sections.findIndex((o) => o.id === sectionId);
-    if (idx < 0) return ORPHAN_COLOR;
-    return sectionColorFor(sections[idx], idx);
+    if (!sections.some((o) => o.id === sectionId)) return ORPHAN_COLOR;
+    return sectionColorById(doc.objects, sectionId);
   };
 
   const seats = useMemo(() => doc.objects.flatMap((o) =>
     o.seats.map((s) => {
       const section = doc.objects.find((item) => item.id === (s.sectionId ?? o.sectionId)) ?? o;
       const isSec = !!section.isSection;
-      const idx = sections.findIndex((item) => item.id === section.id);
       return {
         ...s,
         section: isSec ? section.label : 'Tanpa section',
         sectionId: isSec ? section.id : ORPHAN_ID,
-        color: isSec && idx >= 0 ? sectionColorFor(section, idx) : ORPHAN_COLOR,
+        color: isSec ? sectionColorById(doc.objects, section.id) : ORPHAN_COLOR,
       };
-    })), [doc, sections]);
+    })), [doc]);
 
   const orphanSeats = useMemo(() => seats.filter((s) => s.sectionId === ORPHAN_ID), [seats]);
   const activeSection = activeId && activeId !== ORPHAN_ID ? sections.find((o) => o.id === activeId) ?? null : null;
@@ -67,13 +66,9 @@ export default function Preview() {
     if (!obj) return null;
     const geom = sectionGeomFor(obj);
     if (!geom) return null;
-    const pts = geom.rings.flat();
-    if (pts.length === 0) return null;
-    const xs = pts.map((p) => p[0]);
-    const ys = pts.map((p) => p[1]);
-    const x = Math.min(...xs);
-    const y = Math.min(...ys);
-    return { x, y, w: Math.max(1, Math.max(...xs) - x), h: Math.max(1, Math.max(...ys) - y) };
+    const box = bboxOf(geom.rings.flat());
+    if (!box) return null;
+    return { x: box.x, y: box.y, w: box.w, h: box.h };
   };
 
   const enter = (id: string) => {
@@ -175,7 +170,7 @@ export default function Preview() {
     bySection.set(s.section, e);
   }
 
-  const legendSections = sections.map((o, i) => ({ id: o.id, label: o.label, color: sectionColorFor(o, i) }));
+  const legendSections = sections.map((o) => ({ id: o.id, label: o.label, color: sectionColorById(doc.objects, o.id) }));
   if (orphanSeats.length > 0) legendSections.push({ id: ORPHAN_ID, label: 'Tanpa section', color: ORPHAN_COLOR });
 
   return (
@@ -230,8 +225,9 @@ export default function Preview() {
             if (o.isSection) {
               const c = colorOf(o.id);
               const bounds = geomBox(o.id);
-              const cx = bounds ? bounds.x + bounds.w / 2 : o.points.length > 0 ? o.points.reduce((a, p) => a + p[0], 0) / o.points.length : 0;
-              const cy = bounds ? bounds.y + bounds.h / 2 : o.points.length > 0 ? o.points.reduce((a, p) => a + p[1], 0) / o.points.length : 0;
+              const fallback = bboxOf(o.points);
+              const cx = bounds ? bounds.x + bounds.w / 2 : fallback ? fallback.cx : 0;
+              const cy = bounds ? bounds.y + bounds.h / 2 : fallback ? fallback.cy : 0;
               const dimmed = !!activeId && activeId !== o.id;
               return (
                 <g key={o.id} className="preview-section" role="button" tabIndex={0} aria-label={activeId === o.id ? `Section aktif ${o.label}` : `Masuk section ${o.label}`}
@@ -246,7 +242,7 @@ export default function Preview() {
                       fillRule={o.svgFillRule ?? 'nonzero'} vectorEffect="non-scaling-stroke"
                       fill={c} fillOpacity={activeId === o.id ? 0.22 : 0.16} stroke={c} strokeWidth={activeId === o.id ? 3 : 2} />
                   ) : (
-                    <polygon className="preview-section-shape" points={o.points.map((p) => `${p[0]},${p[1]}`).join(' ')} vectorEffect="non-scaling-stroke"
+                    <polygon className="preview-section-shape" points={toPointsString(o.points)} vectorEffect="non-scaling-stroke"
                       fill={c} fillOpacity={activeId === o.id ? 0.22 : 0.16} stroke={c} strokeWidth={activeId === o.id ? 3 : 2} />
                   )}
                   {activeId !== o.id && (
@@ -283,19 +279,20 @@ export default function Preview() {
               );
             }
             if (o.kind === 'stage') {
-              const xs = o.points.map((p) => p[0]);
-              const ys = o.points.map((p) => p[1]);
+              const box = bboxOf(o.points);
+              const sx = box ? box.cx : 0;
+              const sy = box ? box.cy : 0;
               return (
                 <g key={o.id}>
-                  <polygon points={o.points.map((p) => `${p[0]},${p[1]}`).join(' ')} fill="#cbd5e1" stroke="#475569">
+                  <polygon points={toPointsString(o.points)} fill="#cbd5e1" stroke="#475569">
                     <title>{o.label}</title>
                   </polygon>
-                  <text x={(Math.min(...xs) + Math.max(...xs)) / 2} y={(Math.min(...ys) + Math.max(...ys)) / 2} textAnchor="middle" className="lbl preview-hover-lbl" pointerEvents="none">{o.label}</text>
+                  <text x={sx} y={sy} textAnchor="middle" className="lbl preview-hover-lbl" pointerEvents="none">{o.label}</text>
                 </g>
               );
             }
             if (o.kind === 'aisle') {
-              return <polyline key={o.id} points={o.points.map((p) => `${p[0]},${p[1]}`).join(' ')} fill="none" stroke="#cbd5e1" strokeWidth={o.width} strokeLinecap="round" />;
+              return <polyline key={o.id} points={toPointsString(o.points)} fill="none" stroke="#cbd5e1" strokeWidth={o.width} strokeLinecap="round" />;
             }
 
             return null;

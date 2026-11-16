@@ -5,7 +5,8 @@ import { uid } from '../lib/venue';
 import { fitViewBox, toWorld, viewBoxStr } from '../lib/camera';
 import type { ViewBox } from '../lib/camera';
 import { sectionGeomFor } from '../lib/contain';
-import { sectionColorFor } from '../lib/sectionColor';
+import { sectionColorById } from '../lib/sectionColor';
+import { bboxOf, scalePoints, toPointsString, translatePoints } from '../lib/geometry';
 import { useStore } from '../store';
 
 export const STATUS_COLOR: Record<string, string> = {
@@ -42,7 +43,7 @@ interface Props {
 function translateObj(o: VenueObject, dx: number, dy: number): VenueObject {
   const moved = {
     ...o,
-    points: o.points.map((p) => [p[0] + dx, p[1] + dy] as Pt),
+    points: translatePoints(o.points, dx, dy),
     seats: o.seats.map((s) => ({ ...s, x: s.x + dx, y: s.y + dy })),
   };
   // vektor disimpan dalam unit path: geser balik ke unit path
@@ -84,25 +85,16 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
   const previousFocus = useRef<string | null>(null);
   const pan = useRef<{ x: number; y: number; vb: ViewBox } | null>(null);
   const focused = doc.objects.find(o => o.id === focusId);
-  const focusedIdx = doc.objects.filter(o => o.isSection).findIndex(o => o.id === focusId);
-  const sectionColor = (id: string): string => {
-    const order = doc.objects.filter(o => o.isSection);
-    const idx = order.findIndex(o => o.id === id);
-    const obj = order[idx];
-    return sectionColorFor(obj ?? null, idx >= 0 ? idx : 0);
-  };
-  void focusedIdx;
+  const sectionColor = (id: string): string => sectionColorById(doc.objects, id);
   const focusGeom = useMemo(() => focused ? sectionGeomFor(focused) : null, [focused]);
   const fit = useCallback(() => {
     const el = svgRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
     if (focusGeom) {
-      const points = focusGeom.rings.flat();
-      const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
-      const x = Math.min(...xs), y = Math.min(...ys);
-      const w = Math.max(1, Math.max(...xs) - x), h = Math.max(1, Math.max(...ys) - y);
-      setVb(fitViewBox(r.width, r.height, w * 1.3, h * 1.3, x + w / 2, y + h / 2));
+      const box = bboxOf(focusGeom.rings.flat());
+      if (!box) return;
+      setVb(fitViewBox(r.width, r.height, box.w * 1.3, box.h * 1.3, box.cx, box.cy));
     } else setVb(fitViewBox(r.width, r.height, doc.width, doc.height));
   }, [focusGeom, doc.width, doc.height]);
   const fitRef = useRef(fit);
@@ -305,6 +297,13 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           ...scaleDrag.orig,
           vTransform: { tx: scaleDrag.cx - ux * s2, ty: scaleDrag.cy - uy * s2, scale: s2 },
         });
+      } else if (scaleDrag.orig.points.length >= 2) {
+        // skala uniform objek points (polygon/stage/aisle/draf) terhadap pusat bbox
+        const pts = scalePoints(scaleDrag.orig.points, scaleDrag.cx, scaleDrag.cy, k);
+        const kk = Math.max(0.05, Math.min(20, k));
+        const width =
+          scaleDrag.orig.kind === 'aisle' ? Math.max(1, scaleDrag.orig.width * kk) : scaleDrag.orig.width;
+        setPreviewObj({ ...scaleDrag.orig, points: pts, width });
       }
       return;
     }
@@ -440,7 +439,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     ? rendered.filter(o => o.id === focusId || o.sectionId === focusId || o.seats.some(s => s.sectionId === focusId))
     : rendered.filter(o => o.kind !== 'row-straight' && o.kind !== 'row-arc');
 
-  const ptsStr = (pts: Pt[]): string => pts.map((p) => `${p[0]},${p[1]}`).join(' ');
+  const ptsStr = toPointsString;
 
   return (
     <>
@@ -677,7 +676,28 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
                 setScaleDrag({ id: selected.id, orig: selected, cx, cy, d0: Math.max(Math.hypot(hx - cx, hy - cy), 4) });
               }}
             />
-            <text x={vecBox.x} y={vecBox.y - 10} className="lbl">vektor: geser + skala (kurva tetap)</text>
+          </g>
+        );
+      })()}
+
+      {selected?.id !== focusId && selected && selected.kind !== 'vector' && selected.kind !== 'row-straight' && selected.kind !== 'row-arc' && selected.points.length >= 2 && tool === 'select' && visible.find((o) => o.id === selected.id) && (() => {
+        const pts = previewObj?.id === selected.id ? previewObj.points : selected.points;
+        const box = bboxOf(pts);
+        if (!box) return null;
+        const { x, y, w, h, cx, cy } = box;
+        const hx = x + w + 14;
+        const hy = y + h + 14;
+        return (
+          <g>
+            <rect x={x} y={y} width={w} height={h} fill="none" stroke="#2563eb" strokeWidth={1.5} strokeDasharray="6 4" pointerEvents="none" />
+            <line x1={cx} y1={cy} x2={hx} y2={hy} stroke="#2563eb" strokeWidth={1.5} strokeDasharray="4 3" pointerEvents="none" />
+            <circle
+              cx={hx} cy={hy} r={10} fill="#fff" stroke="#2563eb" strokeWidth={2.5} className="vh"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                setScaleDrag({ id: selected.id, orig: selected, cx, cy, d0: Math.max(Math.hypot(hx - cx, hy - cy), 4) });
+              }}
+            />
           </g>
         );
       })()}
