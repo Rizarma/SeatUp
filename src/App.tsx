@@ -14,6 +14,7 @@ import { classifySeats, sectionGeomFor } from './lib/contain';
 import { validateVenueDoc, parseVenueJson } from './lib/validate';
 import { markEligibility } from './lib/panelContext';
 import { saveLocal, loadLocal, downloadJson, readTextFile, readImageFile } from './lib/storage';
+import { saveBackground, loadBackground, clearBackground, hasBackgroundFlag, dataUrlToBlob } from './lib/bgImage';
 import { StoreProvider, useStore } from './store';
 import type { Tool } from './store';
 import EditorCanvas from './components/EditorCanvas';
@@ -178,11 +179,21 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
         source: { origin: 'import-draft' as const, confidence: 0.35 },
         guess: guessKind(s.bbox, sw, sh),
       }));
+      const prevBg = doc.backgroundImage;
       update((d) => ({
         ...d,
         backgroundImage: asBg ? meta.url : d.backgroundImage,
         objects: [...d.objects, ...objs],
       }));
+      if (asBg) {
+        // Latar hidup di IndexedDB (blob asli), bukan di JSON dokumen.
+        try {
+          await saveBackground(file);
+        } catch {
+          // tampilkan sesi ini saja; draf tetap tersimpan
+        }
+        if (prevBg && prevBg.startsWith('blob:') && prevBg !== meta.url) URL.revokeObjectURL(prevBg);
+      }
       setImportMsg(
         `gambar ${meta.width}×${meta.height} → ${res.componentsRaw} komponen, ${res.kept} draf disimpan (${res.elapsedMs}ms). ` +
         `Ini draf kasar: relabel, geser vertex, atau hapus yang salah. Bukan hasil presisi.`,
@@ -215,10 +226,27 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
   const bgFile = async (file: File) => {
     try {
       const meta = await readImageFile(file);
+      let persisted = false;
+      try {
+        await saveBackground(file);
+        persisted = true;
+      } catch {
+        persisted = false;
+      }
+      if (doc.backgroundImage?.startsWith('blob:')) URL.revokeObjectURL(doc.backgroundImage);
       update((d) => ({ ...d, backgroundImage: meta.url }));
+      setImportMsg(persisted
+        ? 'Latar tersimpan di browser (IndexedDB, di luar kuota localStorage).'
+        : 'Latar ditampilkan sesi ini saja (penyimpanan IndexedDB tak tersedia).');
     } catch {
       setImportMsg('Latar gagal dibaca.');
     }
+  };
+
+  const clearBg = () => {
+    if (doc.backgroundImage?.startsWith('blob:')) URL.revokeObjectURL(doc.backgroundImage);
+    void clearBackground().catch(() => {});
+    update((d) => ({ ...d, backgroundImage: null }));
   };
 
   const selectedObj = doc.objects.find((o) => o.id === selectedId) ?? undefined;
@@ -284,7 +312,7 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
         aisleWidth={aisleWidth} setAisleWidth={setAisleWidth}
         showBg={showBg} setShowBg={setShowBg} importMsg={importMsg}
         onImportFile={importFile} onImportSvgFile={importSvgFile} onBgFile={bgFile}
-        onClearBg={() => update((d) => ({ ...d, backgroundImage: null }))}
+        onClearBg={clearBg}
         hasBg={!!doc.backgroundImage}
         sections={activeFocusId ? sections.filter(s => s.id === activeFocusId) : sections} sectionId={effSectionId} setSectionId={() => {}} focusId={activeFocusId} onEnterSection={enterSection}
         validCount={anchor ? validCount : null} rejectedCount={anchor ? rejectedCount : null}
@@ -327,16 +355,20 @@ function Shell() {
 
   const doSave = () => {
     try {
-      const r = saveLocal(doc);
+      // Dokumen JSON selalu tanpa latar (URL sesi tak portabel, dataURL boros
+      // kuota); blob latar sudah/sedang tersimpan di IndexedDB saat dipilih.
+      saveLocal({ ...doc, backgroundImage: null });
       markSaved();
-      setMsg(r.withBackground
+      setMsg(!doc.backgroundImage
         ? 'Tersimpan di browser (localStorage).'
-        : 'Tersimpan tanpa latar (latar terlalu besar untuk localStorage). Ekspor JSON untuk simpan penuh.');
+        : hasBackgroundFlag()
+          ? 'Tersimpan: dokumen di localStorage, latar di IndexedDB.'
+          : 'Tersimpan (latar hanya sesi ini — IndexedDB tak tersedia).');
     } catch (err) {
       setMsg(`Gagal simpan: ${err instanceof Error ? err.message : 'penyimpanan penuh'}. Ekspor JSON dulu.`);
     }
   };
-  const doLoad = () => {
+  const doLoad = async () => {
     const raw = loadLocal();
     if (!raw) {
       setMsg('Belum ada simpanan lokal.');
@@ -347,17 +379,47 @@ function Shell() {
       setMsg(`Simpanan rusak: ${errors.join('; ')}`);
       return;
     }
-    loadDoc(d);
-    setMsg('Simpanan lokal dimuat.');
+    if (doc.backgroundImage?.startsWith('blob:')) URL.revokeObjectURL(doc.backgroundImage);
+    const storedBg = d.backgroundImage;
+    let bgUrl: string | null = null;
+    if (typeof storedBg === 'string' && storedBg.startsWith('data:')) {
+      // Migrasi dokumen lama: pindahkan dataURL ke IndexedDB agar JSON tetap kecil.
+      try {
+        const blob = await dataUrlToBlob(storedBg);
+        await saveBackground(blob);
+        bgUrl = URL.createObjectURL(blob);
+      } catch {
+        bgUrl = storedBg;
+      }
+    } else if (hasBackgroundFlag()) {
+      try {
+        const blob = await loadBackground();
+        if (blob) bgUrl = URL.createObjectURL(blob);
+      } catch {
+        // jalan tanpa latar
+      }
+    }
+    loadDoc({ ...d, backgroundImage: bgUrl });
+    setMsg(bgUrl
+      ? 'Simpanan lokal + latar dimuat.'
+      : hasBackgroundFlag()
+        ? 'Simpanan lokal dimuat (blob latar tak ditemukan).'
+        : 'Simpanan lokal dimuat.');
   };
   const doExport = () => {
-    const v = validateVenueDoc(JSON.parse(JSON.stringify(doc)));
+    // Hanya dataURL yang portabel ikut diekspor; URL blob sesi selalu dibuang.
+    const portableBg = typeof doc.backgroundImage === 'string' && doc.backgroundImage.startsWith('data:')
+      ? doc.backgroundImage
+      : null;
+    const v = validateVenueDoc(JSON.parse(JSON.stringify({ ...doc, backgroundImage: portableBg })));
     if (!v.ok) {
       setMsg(`Gagal ekspor: ${v.errors.slice(0, 3).join('; ')}`);
       return;
     }
-    downloadJson(doc);
-    setMsg('venue.json diunduh (tervalidasi).');
+    downloadJson({ ...doc, backgroundImage: portableBg });
+    setMsg(doc.backgroundImage && !portableBg
+      ? 'venue.json diunduh tanpa latar (latar sesi tak portabel).'
+      : 'venue.json diunduh (tervalidasi).');
   };
   const doImportJson = async (file: File) => {
     const text = await readTextFile(file);
