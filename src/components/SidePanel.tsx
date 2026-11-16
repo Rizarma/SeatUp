@@ -63,17 +63,13 @@ function Num({ label, value, onChange, min, max, step }: {
   );
 }
 
-function Badge({ tone, children }: { tone: 'blue' | 'red' | 'grey'; children: React.ReactNode }) {
-  return <span className={`badge b-${tone}`}>{children}</span>;
-}
-
 function CtxHead({ icon: Icon, title, sub }: { icon: LucideIcon; title: string; sub: string }) {
   return (
-    <div className="ctxhead">
+    <div className="ctxhead ctxhead--stable">
       <span className="ctxicon" aria-hidden="true"><Icon size={18} strokeWidth={2} /></span>
-      <div>
-        <strong>{title}</strong>
-        <p className="muted">{sub}</p>
+      <div className="ctxtext">
+        <p className="ctxtitle"><span className="ell" title={title}>{title}</span></p>
+        <p className="muted ctxsub" title={sub}>{sub}</p>
       </div>
     </div>
   );
@@ -488,8 +484,7 @@ function SeatSelectionEditorInner({ entries }: {
 
   return (
     <section aria-label="Kursi terpilih">
-      <CtxHead icon={Armchair} title={`${entries.length} kursi terpilih`} sub={mixed ? 'Nilai campuran — isi field untuk ubah semua' : 'Ubah baris, nomor, atau harga kursi yang dipilih'} />
-      {invalidN > 0 && <p><Badge tone="red">{invalidN} invalid</Badge></p>}
+      <CtxHead icon={Armchair} title={`${entries.length} kursi terpilih`} sub={`${mixed ? 'Nilai campuran — isi field untuk ubah semua' : 'Ubah baris, nomor, atau harga kursi yang dipilih'}${invalidN > 0 ? ` · ${invalidN} invalid` : ''}`} />
       <label className="fld"><span>Baris{commonRow == null ? ' (campuran)' : ''}</span>
         <input aria-label="Baris kursi terpilih" value={rowDraft} placeholder={commonRow == null ? 'Campuran — isi untuk ubah semua' : undefined}
           onChange={(e) => { setRowDraft(e.target.value); setMsg(''); }} />
@@ -595,23 +590,17 @@ function ObjectProps({ p, selected, markOk, markReason }: {
     : selected.kind === 'stage' ? Podium
     : isRow ? Armchair
     : selected.kind === 'import-draft' ? FileUp : Shapes;
+  const subText = `${kindDisplay(selected)}${selected.isSection && (selected.kind === 'section' || selected.kind === 'vector') ? ' · Section' : ''}${selected.seats.length > 0 ? ` · ${selected.seats.length} kursi` : ''}${invalidN > 0 ? ` · ${invalidN} invalid` : ''}`;
   return (
     <div className="object-properties">
-      <div className="ctxhead">
+      <div className="ctxhead ctxhead--stable">
         <span className="ctxicon" aria-hidden="true"><KindIcon size={18} strokeWidth={2} /></span>
-        <div>
-          <strong>{selected.label}</strong>
-          <p className="muted">
-            {kindDisplay(selected)}
-            {selected.isSection && (selected.kind === 'section' || selected.kind === 'vector') ? ' · Section' : ''}
-            {selected.seats.length > 0 ? ` · ${selected.seats.length} kursi` : ''}
+        <div className="ctxtext">
+          <p className="ctxtitle">
+            <span className="ell" title={selected.label}>{selected.label}</span>
+            {selected.isSection && <span className="badge b-blue ctx-flag" aria-label="Section">Section</span>}
           </p>
-          {(selected.isSection || invalidN > 0) && (
-            <p className="badges">
-              {selected.isSection && <Badge tone="blue">Section</Badge>}
-              {invalidN > 0 && <Badge tone="red">{invalidN} invalid</Badge>}
-            </p>
-          )}
+          <p className="muted ctxsub" title={subText}>{subText}</p>
         </div>
       </div>
       <div className="object-config-group">
