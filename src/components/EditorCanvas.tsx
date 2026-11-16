@@ -662,20 +662,28 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       {selected?.id !== focusId && selected?.kind === 'vector' && vecBox && tool === 'select' && (() => {
         const cx = vecBox.x + vecBox.w / 2;
         const cy = vecBox.y + vecBox.h / 2;
-        const hx = vecBox.x + vecBox.w + 14;
-        const hy = vecBox.y + vecBox.h + 14;
+        const S = 12;
+        const corners: Array<[number, number]> = [
+          [vecBox.x, vecBox.y],
+          [vecBox.x + vecBox.w, vecBox.y],
+          [vecBox.x, vecBox.y + vecBox.h],
+          [vecBox.x + vecBox.w, vecBox.y + vecBox.h],
+        ];
         return (
           <g>
             <rect x={vecBox.x} y={vecBox.y} width={vecBox.w} height={vecBox.h} fill="none" stroke="#2563eb" strokeWidth={1.5} strokeDasharray="6 4" pointerEvents="none" />
-            <line x1={cx} y1={cy} x2={hx} y2={hy} stroke="#2563eb" strokeWidth={1.5} strokeDasharray="4 3" pointerEvents="none" />
-            <circle
-              cx={hx} cy={hy} r={10} fill="#fff" stroke="#2563eb" strokeWidth={2.5} className="vh"
-              onPointerDown={(e) => {
-                if (!selected.vTransform) return;
-                e.stopPropagation();
-                setScaleDrag({ id: selected.id, orig: selected, cx, cy, d0: Math.max(Math.hypot(hx - cx, hy - cy), 4) });
-              }}
-            />
+            {corners.map(([px, py], i) => (
+              <rect
+                key={i}
+                x={px - S / 2} y={py - S / 2} width={S} height={S} fill="#fff" stroke="#2563eb" strokeWidth={2} className="vh"
+                style={{ cursor: 'nwse-resize' }}
+                onPointerDown={(e) => {
+                  if (!selected.vTransform) return;
+                  e.stopPropagation();
+                  setScaleDrag({ id: selected.id, orig: selected, cx, cy, d0: Math.max(Math.hypot(px - cx, py - cy), 4) });
+                }}
+              />
+            ))}
           </g>
         );
       })()}
@@ -685,19 +693,22 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         const box = bboxOf(pts);
         if (!box) return null;
         const { x, y, w, h, cx, cy } = box;
-        const hx = x + w + 14;
-        const hy = y + h + 14;
+        const S = 12;
+        const corners: Array<[number, number]> = [[x, y], [x + w, y], [x, y + h], [x + w, y + h]];
         return (
           <g>
             <rect x={x} y={y} width={w} height={h} fill="none" stroke="#2563eb" strokeWidth={1.5} strokeDasharray="6 4" pointerEvents="none" />
-            <line x1={cx} y1={cy} x2={hx} y2={hy} stroke="#2563eb" strokeWidth={1.5} strokeDasharray="4 3" pointerEvents="none" />
-            <circle
-              cx={hx} cy={hy} r={10} fill="#fff" stroke="#2563eb" strokeWidth={2.5} className="vh"
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                setScaleDrag({ id: selected.id, orig: selected, cx, cy, d0: Math.max(Math.hypot(hx - cx, hy - cy), 4) });
-              }}
-            />
+            {corners.map(([px, py], i) => (
+              <rect
+                key={i}
+                x={px - S / 2} y={py - S / 2} width={S} height={S} fill="#fff" stroke="#2563eb" strokeWidth={2} className="vh"
+                style={{ cursor: 'nwse-resize' }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  setScaleDrag({ id: selected.id, orig: selected, cx, cy, d0: Math.max(Math.hypot(px - cx, py - cy), 4) });
+                }}
+              />
+            ))}
           </g>
         );
       })()}
