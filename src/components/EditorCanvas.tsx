@@ -6,7 +6,7 @@ import { fitViewBox, toWorld, viewBoxStr } from '../lib/camera';
 import type { ViewBox } from '../lib/camera';
 import { sectionGeomFor } from '../lib/contain';
 import { sectionColorById } from '../lib/sectionColor';
-import { bboxOf, scalePoints, toPointsString, translatePoints } from '../lib/geometry';
+import { bboxOf, toPointsString, translatePoints } from '../lib/geometry';
 import { useStore } from '../store';
 
 export const STATUS_COLOR: Record<string, string> = {
@@ -291,7 +291,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       const k = d1 / scaleDrag.d0;
       const t = scaleDrag.orig.vTransform;
       if (t) {
-        // skala terhadap pusat bbox: canvas = s*u + t, pusat tetap
+        // skala vector terhadap pusat bbox: canvas = s*u + t, pusat tetap
         const s2 = t.scale * k;
         const ux = (scaleDrag.cx - t.tx) / t.scale;
         const uy = (scaleDrag.cy - t.ty) / t.scale;
@@ -299,13 +299,6 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           ...scaleDrag.orig,
           vTransform: { tx: scaleDrag.cx - ux * s2, ty: scaleDrag.cy - uy * s2, scale: s2 },
         });
-      } else if (scaleDrag.orig.points.length >= 2) {
-        // skala uniform objek points (polygon/stage/aisle/draf) terhadap pusat bbox
-        const pts = scalePoints(scaleDrag.orig.points, scaleDrag.cx, scaleDrag.cy, k);
-        const kk = Math.max(0.05, Math.min(20, k));
-        const width =
-          scaleDrag.orig.kind === 'aisle' ? Math.max(1, scaleDrag.orig.width * kk) : scaleDrag.orig.width;
-        setPreviewObj({ ...scaleDrag.orig, points: pts, width });
       }
       return;
     }
@@ -662,18 +655,32 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       )}
 
       {selected?.id !== focusId && selected?.kind === 'vector' && vecBox && tool === 'select' && (() => {
-        const cx = vecBox.x + vecBox.w / 2;
-        const cy = vecBox.y + vecBox.h / 2;
+        // vecBox diukur sekali saat seleksi; saat shape digeser/di-scale (previewObj),
+        // tampilkan kotak mengikuti transform preview agar garis putus-putus ikut gerak.
+        const t0 = selected.vTransform;
+        const t1 = previewObj?.id === selected.id ? previewObj.vTransform : t0;
+        let dx = vecBox;
+        if (t0 && t1 && (t1.tx !== t0.tx || t1.ty !== t0.ty || t1.scale !== t0.scale)) {
+          const k = t0.scale !== 0 ? t1.scale / t0.scale : 1;
+          dx = {
+            x: t1.tx + (vecBox.x - t0.tx) * k,
+            y: t1.ty + (vecBox.y - t0.ty) * k,
+            w: vecBox.w * k,
+            h: vecBox.h * k,
+          };
+        }
+        const cx = dx.x + dx.w / 2;
+        const cy = dx.y + dx.h / 2;
         const S = 12;
         const corners: Array<[number, number]> = [
-          [vecBox.x, vecBox.y],
-          [vecBox.x + vecBox.w, vecBox.y],
-          [vecBox.x, vecBox.y + vecBox.h],
-          [vecBox.x + vecBox.w, vecBox.y + vecBox.h],
+          [dx.x, dx.y],
+          [dx.x + dx.w, dx.y],
+          [dx.x, dx.y + dx.h],
+          [dx.x + dx.w, dx.y + dx.h],
         ];
         return (
           <g>
-            <rect x={vecBox.x} y={vecBox.y} width={vecBox.w} height={vecBox.h} fill="none" stroke="#2563eb" strokeWidth={1.5} strokeDasharray="6 4" pointerEvents="none" />
+            <rect x={dx.x} y={dx.y} width={dx.w} height={dx.h} fill="none" stroke="#2563eb" strokeWidth={1.5} strokeDasharray="6 4" pointerEvents="none" />
             {corners.map(([px, py], i) => (
               <rect
                 key={i}
@@ -682,7 +689,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
                 onPointerDown={(e) => {
                   if (!selected.vTransform) return;
                   e.stopPropagation();
-                  setScaleDrag({ id: selected.id, orig: selected, cx, cy, d0: Math.max(Math.hypot(px - cx, py - cy), 4) });
+                  const base = previewObj?.id === selected.id ? previewObj : selected;
+                  setScaleDrag({ id: selected.id, orig: base, cx, cy, d0: Math.max(Math.hypot(px - cx, py - cy), 4) });
                 }}
               />
             ))}
@@ -690,30 +698,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         );
       })()}
 
-      {selected?.id !== focusId && selected && selected.kind !== 'vector' && selected.kind !== 'row-straight' && selected.kind !== 'row-arc' && selected.points.length >= 2 && tool === 'select' && visible.find((o) => o.id === selected.id) && (() => {
-        const pts = previewObj?.id === selected.id ? previewObj.points : selected.points;
-        const box = bboxOf(pts);
-        if (!box) return null;
-        const { x, y, w, h, cx, cy } = box;
-        const S = 12;
-        const corners: Array<[number, number]> = [[x, y], [x + w, y], [x, y + h], [x + w, y + h]];
-        return (
-          <g>
-            <rect x={x} y={y} width={w} height={h} fill="none" stroke="#2563eb" strokeWidth={1.5} strokeDasharray="6 4" pointerEvents="none" />
-            {corners.map(([px, py], i) => (
-              <rect
-                key={i}
-                x={px - S / 2} y={py - S / 2} width={S} height={S} fill="#fff" stroke="#2563eb" strokeWidth={2} className="vh"
-                style={{ cursor: 'nwse-resize' }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  setScaleDrag({ id: selected.id, orig: selected, cx, cy, d0: Math.max(Math.hypot(px - cx, py - cy), 4) });
-                }}
-              />
-            ))}
-          </g>
-        );
-      })()}
+      {/* Objek points (section/polygon/stage/aisle/draf) sengaja TANPA kotak bbox:
+          seleksi hanya mengikuti shape polygon + vertex bulat agar tidak ganda. */}
 
       {draft.length > 0 && (
         <g>
