@@ -34,6 +34,7 @@ function clone(d: VenueDoc): VenueDoc {
 function reducer(s: State, a: Action): State {
   switch (a.t) {
     case 'commit': {
+      if (a.doc === s.doc) return s;
       const norm = normalizeSectionFlags(a.doc.objects);
       const base = norm.objects === a.doc.objects ? a.doc : { ...a.doc, objects: norm.objects };
       const rev = revalidateSeats(base.objects);
@@ -121,7 +122,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     dirty: false,
   });
   const update = useCallback((fn: (doc: VenueDoc) => VenueDoc) => {
-    dispatch({ t: 'commit', doc: fn(clone(state.doc)) });
+    // fn wajib immutable (semua pemanggil memakai spread/map) sehingga tak perlu
+    // clone doc sebelum fn — cukup 1 clone untuk snapshot past di reducer.
+    dispatch({ t: 'commit', doc: fn(state.doc) });
   }, [state.doc]);
   const value = useMemo<Store>(() => ({
     state,
