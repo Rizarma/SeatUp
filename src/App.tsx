@@ -322,9 +322,15 @@ function Shell() {
   const { doc, past, future } = state;
 
   const doSave = () => {
-    saveLocal(doc);
-    markSaved();
-    setMsg('Tersimpan di browser (localStorage).');
+    try {
+      const r = saveLocal(doc);
+      markSaved();
+      setMsg(r.withBackground
+        ? 'Tersimpan di browser (localStorage).'
+        : 'Tersimpan tanpa latar (latar terlalu besar untuk localStorage). Ekspor JSON untuk simpan penuh.');
+    } catch (err) {
+      setMsg(`Gagal simpan: ${err instanceof Error ? err.message : 'penyimpanan penuh'}. Ekspor JSON dulu.`);
+    }
   };
   const doLoad = () => {
     const raw = loadLocal();
