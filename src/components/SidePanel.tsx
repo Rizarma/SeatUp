@@ -11,7 +11,7 @@ import { markEligibility } from '../lib/panelContext';
 import { shapeName } from '../lib/shapeLabel';
 import { SECTION_PALETTE, isValidSectionColor, sectionColorById } from '../lib/sectionColor';
 import { withoutObject, withObject } from '../lib/docObjects';
-import { CommittedNum, CommittedText, CtxHead, Num, ObjGroup } from './ui';
+import { CommittedNum, CommittedText, CtxHead, Num, ObjGroup, useDebouncedValue } from './ui';
 import { useStore } from '../store';
 
 interface Props {
@@ -56,7 +56,9 @@ export default function SidePanel(p: Props) {
   const { doc, selectedId, selectedSeatIds, tool } = state;
   const selected = doc.objects.find((o) => o.id === selectedId) ?? null;
   const [asBg, setAsBg] = React.useState(true);
-  const [query, setQuery] = React.useState('');
+  // Input mentah responsif tiap ketikan; filter memakai versi debounce-nya.
+  const [queryRaw, setQueryRaw] = React.useState('');
+  const query = useDebouncedValue(queryRaw, 200);
   const [tab, setTab] = React.useState<TabId>('props');
   const [svgName, setSvgName] = React.useState('');
   const [rasterName, setRasterName] = React.useState('');
@@ -157,7 +159,7 @@ export default function SidePanel(p: Props) {
         {tab === 'objek' && (
           <>
             <label className="fld search"><span>Cari</span>
-              <input value={query} placeholder="nama atau jenis…" onChange={(e) => { p.onHoverObject(null); setQuery(e.target.value); }} />
+              <input value={queryRaw} placeholder="nama atau jenis…" onChange={(e) => { p.onHoverObject(null); setQueryRaw(e.target.value); }} />
             </label>
             {doc.objects.length === 0 && (
               <p className="muted">Kanvas kosong. Gambar polygon, impor SVG via tab Dokumen, atau muat contoh venue.</p>

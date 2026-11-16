@@ -96,6 +96,20 @@ export function CtxHead({ icon: Icon, title, sub }: { icon: LucideIcon; title: s
   );
 }
 
+/**
+ * Debounce nilai (mis. kata kunci pencarian) agar filter/re-render berat
+ * hanya jalan setelah user berhenti mengetik. Input tetap responsif karena
+ * yang di-debounce adalah nilainya, bukan controlled input-nya.
+ */
+export function useDebouncedValue<T>(value: T, delayMs = 200): T {
+  const [debounced, setDebounced] = React.useState(value);
+  React.useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), Math.max(0, delayMs));
+    return () => clearTimeout(t);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 /** Grup collapsible untuk tab Objek. */
 export function ObjGroup({ title, openDefault, children }: { title: string; openDefault?: boolean; children: React.ReactNode }) {
   return (
