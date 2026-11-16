@@ -83,10 +83,20 @@ export interface VenueDoc {
   objects: VenueObject[];
 }
 
-let counter = 0;
+let fallbackCounter = 0;
+/** ID unik: crypto.randomUUID bila tersedia, fallback acak + waktu + counter. */
 export function uid(prefix: string): string {
-  counter += 1;
-  return `${prefix}-${Date.now().toString(36)}-${counter}`;
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === 'function') {
+    try {
+      return `${prefix}-${c.randomUUID()}`;
+    } catch {
+      // jatuh ke fallback di bawah
+    }
+  }
+  fallbackCounter += 1;
+  const rand = Math.floor(Math.random() * 0xffffff).toString(36);
+  return `${prefix}-${Date.now().toString(36)}-${fallbackCounter.toString(36)}-${rand}`;
 }
 
 /** 0 -> A, 25 -> Z, 26 -> AA */

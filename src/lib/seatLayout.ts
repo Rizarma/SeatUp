@@ -52,7 +52,17 @@ export function fitSeatsToShape(objects: VenueObject[], target: VenueObject, gap
   const minY = Math.min(...points.map(p => p[1])), maxY = Math.max(...points.map(p => p[1]));
   const radius = seatRadius + margin;
   // Bounded scan resolution for large imported SVGs.
-  const step = Math.max(Math.min(2, seatRadius / 2), (maxX - minX) / 600, (maxY - minY) / 600);
+  const spanX = maxX - minX;
+  const spanY = maxY - minY;
+  let step = Math.max(Math.min(2, seatRadius / 2), spanX / 600, spanY / 600);
+  // P3: batasi total sel grid agar section raksasa/kompleks tak freeze UI.
+  const MAX_CELLS = 250000;
+  const estCols = (spanX - 2 * radius) / step + 1;
+  const estRows = (spanY - 2 * radius) / step + 1;
+  const estCells = estCols * estRows;
+  if (Number.isFinite(estCells) && estCells > MAX_CELLS && estCells > 0) {
+    step *= Math.sqrt(estCells / MAX_CELLS);
+  }
   const candidates: { y: number; xs: number[] }[] = [];
   for (let y = minY + radius; y <= maxY - radius; y += step) {
     const xs: number[] = [];
