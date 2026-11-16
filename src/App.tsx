@@ -316,8 +316,7 @@ function Shell() {
     const t = setTimeout(() => setMsg(''), 4000);
     return () => clearTimeout(t);
   }, [msg]);
-  const { doc, past, future, dirty } = state;
-  const seatCount = doc.objects.reduce((a, o) => a + o.seats.length, 0);
+  const { doc, past, future } = state;
 
   const doSave = () => {
     saveLocal(doc);
@@ -362,8 +361,7 @@ function Shell() {
     <div className="app">
       <header>
         <div className="brand">
-          <h1>Seat Management PoC</h1>
-          <p className="muted">{doc.name} · {doc.objects.length} objek · {seatCount} kursi {dirty ? '· belum disimpan' : '· tersimpan'}</p>
+          <h1>SeatUp</h1>
         </div>
         <div className="navbar-actions">
           <div className="seg" role="group" aria-label="Mode tampilan">
