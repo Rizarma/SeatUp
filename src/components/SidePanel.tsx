@@ -307,7 +307,9 @@ function ToolOptions({ p, f, tool }: { p: Props; f: RowForm; tool: string }) {
     return (
       <>
         <CtxHead icon={Armchair} title="Buat baris kursi" sub={targetLabel ? `Target: § ${targetLabel}` : 'Masuk ke section dulu'} />
-        <p className="muted">Seret kanan/kiri untuk satu baris, seret atas/bawah untuk beberapa baris lurus. Jumlah mengikuti area dan jarak kursi/baris; lepaskan untuk membuat. Esc untuk batal. Klik biasa memakai mode dan jumlah di bawah.</p>
+        <p className="muted">{f.mode === 'straight'
+          ? 'Seret untuk membuat blok lurus (kanan/kiri = kolom, atas/bawah = baris). Lepaskan untuk membuat. Esc batal.'
+          : 'Mode busur: klik kanvas untuk jangkar pusat busur, lalu Buat. Catatan: seret-drag selalu membuat baris lurus.'}</p>
         {p.focusId ? (
           <p className="muted">Target: § {targetLabel} (section fokus). Ganti target via Kembali ke venue → klik dua kali section lain.</p>
         ) : (

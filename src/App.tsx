@@ -76,6 +76,7 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
   };
   const leaveSection = () => { setFocusId(null); cancelRowDrag(); select(null); selectSeats([]); setTool('select'); };
 
+  // Drag-create selalu lurus (eksplisit di UI); mode busur hanya untuk klik jangkar.
   const dragLayout = useMemo(() => rowDrag ? dragSeatLayout(rowDrag.start, rowDrag.end, rowForm, placementScale) : null, [rowDrag, rowForm, placementScale]);
   const genSeats = useMemo(() => {
     if (dragLayout) return dragLayout.seats;
@@ -131,6 +132,9 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
     const layout = dragSeatLayout(start, end, rowForm, placementScale);
     commitSeats(layout.seats, start, layout.params);
     cancelRowDrag();
+  };
+  const handleRowDrag = (start: Pt, end: Pt) => {
+    setRowDrag({ start, end });
   };
 
   const importFile = async (file: File, asBg: boolean) => {
@@ -254,11 +258,11 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
         </div>
         )}
         {rowDrag && dragLayout && <div className="seat-drag-summary" role="status">
-          {dragLayout.params.rows} baris × {dragLayout.params.seatsPerRow} kursi · {validCount} valid · {rejectedCount} ditolak
+          {dragLayout.params.rows} baris × {dragLayout.params.seatsPerRow} kursi lurus · {validCount} valid · {rejectedCount} ditolak
           {dragLayout.limited && ' · Maksimal 60 baris × 200 kursi per drag'}
-          <span>Lepaskan untuk membuat · Esc untuk batal</span>
+          <span>Drag selalu membuat baris lurus · mode busur hanya untuk klik jangkar · Lepaskan untuk membuat · Esc untuk batal</span>
         </div>}
-        <EditorCanvas hoveredObjectId={hoveredObjectId} onRowDrag={(start, end) => setRowDrag({ start, end })} onRowRelease={releaseRowDrag} onCancelRowDrag={cancelRowDrag} rowDrag={rowDrag} focusId={activeFocusId} onFocusSection={enterSection} seatRadius={8 * placementScale} anchor={anchor} onAnchor={setAnchor} showBg={showBg} ghosts={ghosts} aisleWidth={aisleWidth} />
+        <EditorCanvas hoveredObjectId={hoveredObjectId} onRowDrag={handleRowDrag} onRowRelease={releaseRowDrag} onCancelRowDrag={cancelRowDrag} rowDrag={rowDrag} focusId={activeFocusId} onFocusSection={enterSection} seatRadius={8 * placementScale} anchor={anchor} onAnchor={setAnchor} showBg={showBg} ghosts={ghosts} aisleWidth={aisleWidth} />
         <div className="dock" role="toolbar" aria-label="Alat editor">
           {TOOLS.filter(t => activeFocusId ? (t.id === 'hand' || t.id === 'select' || t.id === 'seat' || t.id === 'row') : (t.id !== 'seat' && t.id !== 'row')).map((t) => (
             <button
