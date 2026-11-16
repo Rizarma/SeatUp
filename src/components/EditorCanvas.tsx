@@ -16,8 +16,9 @@ export const STATUS_COLOR: Record<string, string> = {
   taken: '#9ca3af',
 };
 
+/** Ghost gambar: 'stage' = kotak panggung, 'rect' = kotak vektor, 'circle' = lingkaran vektor, 'aisle' = garis lorong. */
 interface Ghost {
-  kind: 'rect' | 'line' | 'rectangle' | 'circle';
+  kind: 'stage' | 'aisle' | 'rect' | 'circle';
   a: Pt;
   b: Pt;
 }
@@ -248,10 +249,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       return;
     }
     if (tool === 'stage' || tool === 'aisle' || tool === 'rectangle' || tool === 'circle') {
-      let kind: Ghost['kind'];
-      if (tool === 'stage') kind = 'rect';
-      else if (tool === 'aisle') kind = 'line';
-      else kind = tool;
+      const kind: Ghost['kind'] =
+        tool === 'stage' ? 'stage'
+        : tool === 'aisle' ? 'aisle'
+        : tool === 'rectangle' ? 'rect'
+        : 'circle';
       setGhost({ kind, a: p, b: p });
       return;
     }
@@ -372,7 +374,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       const { a, b } = ghost;
       const w = Math.abs(b[0] - a[0]);
       const h = Math.abs(b[1] - a[1]);
-      if ((ghost.kind === 'rectangle' && w > 10 && h > 10) || (ghost.kind === 'circle' && Math.hypot(w, h) > 10)) {
+      if ((ghost.kind === 'rect' && w > 10 && h > 10) || (ghost.kind === 'circle' && Math.hypot(w, h) > 10)) {
         const x = Math.min(a[0], b[0]);
         const y = Math.min(a[1], b[1]);
         const r = Math.hypot(w, h) / 2;
@@ -391,7 +393,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         };
         update((doc) => ({ ...doc, objects: [...doc.objects, obj] }));
         select(obj.id);
-      } else if (ghost.kind === 'rect' && w > 10 && h > 10) {
+      } else if (ghost.kind === 'stage' && w > 10 && h > 10) {
         const x0 = Math.min(a[0], b[0]);
         const y0 = Math.min(a[1], b[1]);
         const obj: VenueObject = {
@@ -402,7 +404,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         };
         update((d) => ({ ...d, objects: [...d.objects, obj] }));
         select(obj.id);
-      } else if (ghost.kind === 'line' && Math.hypot(w, h) > 10) {
+      } else if (ghost.kind === 'aisle' && Math.hypot(w, h) > 10) {
         const obj: VenueObject = {
           id: uid('obj'), kind: 'aisle', label: 'Lorong',
           points: [a, b], closed: false, width: aisleWidth, price: 0, rowParams: null, seats: [],
@@ -726,8 +728,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       {ghost && (
         ghost.kind === 'circle'
           ? <circle cx={(ghost.a[0] + ghost.b[0]) / 2} cy={(ghost.a[1] + ghost.b[1]) / 2} r={Math.hypot(ghost.b[0] - ghost.a[0], ghost.b[1] - ghost.a[1]) / 2} fill="rgba(147,197,253,0.35)" stroke="#3b82f6" strokeDasharray="6 4" pointerEvents="none" />
-          : ghost.kind === 'rect' || ghost.kind === 'rectangle'
-          ? <rect x={Math.min(ghost.a[0], ghost.b[0])} y={Math.min(ghost.a[1], ghost.b[1])} width={Math.abs(ghost.b[0] - ghost.a[0])} height={Math.abs(ghost.b[1] - ghost.a[1])} fill="rgba(100,116,139,0.4)" stroke="#475569" strokeDasharray="6 4" />
+          : ghost.kind === 'stage' || ghost.kind === 'rect'
+          ? <rect x={Math.min(ghost.a[0], ghost.b[0])} y={Math.min(ghost.a[1], ghost.b[1])} width={Math.abs(ghost.b[0] - ghost.a[0])} height={Math.abs(ghost.b[1] - ghost.a[1])} fill={ghost.kind === 'stage' ? 'rgba(100,116,139,0.4)' : 'rgba(147,197,253,0.35)'} stroke={ghost.kind === 'stage' ? '#475569' : '#3b82f6'} strokeDasharray="6 4" />
           : <line x1={ghost.a[0]} y1={ghost.a[1]} x2={ghost.b[0]} y2={ghost.b[1]} stroke="#94a3b8" strokeWidth={aisleWidth} strokeLinecap="round" opacity={0.6} />
       )}
 
