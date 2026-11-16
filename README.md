@@ -31,6 +31,6 @@ Semua pemesanan dan status kursi adalah simulasi lokal. Tidak ada backend reserv
 - Root directory: `/` (atau kosong)
 - Build command: `npm run build`
 - Build output directory: `dist`
-- Environment: `NODE_VERSION=22`
+- Environment: `NODE_VERSION=24`
 
 Fixture tes dibuat secara sintetis. Catatan internal, screenshot, eksperimen terpisah, dan denah asli tidak disertakan.
