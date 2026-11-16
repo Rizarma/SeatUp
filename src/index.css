@@ -186,12 +186,16 @@ button:focus-visible, .btn:focus-visible, .panel details > summary:focus-visible
 /* Kepala konteks: ikon + judul + subjudul ringkas, tinggi stabil anti layout-shift */
 .ctxhead { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; min-width: 0; }
 .ctxhead--stable { min-height: 52px; }
-.ctxhead--stable .ctxtext { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+.ctxhead--stable .ctxtext { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; gap: 1px; }
 .ctxhead > div { min-width: 0; flex: 1 1 auto; }
-.ctxtitle { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; font-weight: 700; line-height: 20px; min-width: 0; }
+.ctxtitle { display: flex; align-items: center; gap: 6px; margin: 0 !important; padding: 0; font-size: 14px; font-weight: 700; line-height: 20px; min-width: 0; }
 .ctxtitle .ell { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ctx-flag { flex-shrink: 0; margin: 0; }
 .ctxsub { white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* Penyebab renggang: .object-properties .muted (8px top) mengalahkan .ctxhead .muted (2px).
+   Reset eksplisit di header agar title-subtitle rapat sebagai satu kelompok. */
+.object-properties .ctxhead .ctxtitle { margin: 0; }
+.object-properties .ctxhead .ctxsub { margin: 0; line-height: 1.35; }
 .ctxicon {
   flex-shrink: 0; width: 32px; height: 32px; border-radius: 9px;
   display: grid; place-items: center;
