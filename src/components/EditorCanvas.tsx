@@ -6,7 +6,6 @@ import { fitViewBox, toWorld, viewBoxStr } from '../lib/camera';
 import type { ViewBox } from '../lib/camera';
 import { sectionGeomFor } from '../lib/contain';
 import { sectionColorFor } from '../lib/sectionColor';
-import { shapeName } from '../lib/shapeLabel';
 import { useStore } from '../store';
 
 export const STATUS_COLOR: Record<string, string> = {
@@ -65,7 +64,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
   const [canvasHoverId, setCanvasHoverId] = useState<string | null>(null);
   const [hoverSeatId, setHoverSeatId] = useState<string | null>(null);
   const rowGesture = useRef<{ start: Pt; clientX: number; clientY: number; pointerId: number; dragged: boolean } | null>(null);
-  useEffect(() => { rowGesture.current = null; seatGesture.current = null; setSeatMarquee(null); onCancelRowDrag(); }, [tool, focusId, onCancelRowDrag]);
+  useEffect(() => { rowGesture.current = null; seatGesture.current = null; setSeatMarquee(null); onCancelRowDrag(); setCanvasHoverId(null); setHoverSeatId(null); }, [tool, focusId, onCancelRowDrag]);
   const [draft, setDraft] = useState<Pt[]>([]);
   const [ghost, setGhost] = useState<Ghost | null>(null);
   const [drag, setDrag] = useState<
@@ -517,7 +516,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           const selStyle = isSel ? { stroke: '#2563eb', strokeWidth: 2.5 / t.scale } : {};
           const secColor = o.isSection ? sectionColor(o.id) : null;
           return (
-            <g key={o.id} {...sectionEvents}>
+            <g key={o.id} {...sectionEvents} aria-label={o.label}>
               <g
                 ref={isSel ? selVecRef : undefined}
                 transform={`translate(${t.tx} ${t.ty}) scale(${t.scale})`}
@@ -546,30 +545,21 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
                     stroke={secColor} strokeWidth={1.5 / t.scale} strokeOpacity={0.9} pointerEvents="none" />
                 )}
               </g>
-              {(canvasHoverId === o.id || hoveredObjectId === o.id) && (
-                <text x={4} y={-6} className="lbl" transform={`translate(${t.tx} ${t.ty})`} pointerEvents="none" data-hover-label={o.id}>
-                  {o.isSection ? `§ ${o.label} · ${shapeName(o)}` : `${o.label} · ${shapeName(o)}`}
-                </text>
-              )}
             </g>
           );
         }
         const selStyle = isSel ? { stroke: '#2563eb', strokeWidth: 3 } : {};
         if (o.kind === 'aisle') {
-          const hovered = canvasHoverId === o.id || hoveredObjectId === o.id;
           return (
-            <g key={o.id} {...sectionEvents}>
+            <g key={o.id} {...sectionEvents} aria-label={o.label}>
               <polyline points={ptsStr(o.points)} fill="none" stroke="#94a3b8" strokeWidth={o.width} strokeLinecap="round" opacity={0.8} {...selectDrag} style={selStyle} />
-              {hovered && (
-                <text x={o.points[0][0]} y={o.points[0][1] - 8} className="lbl" pointerEvents="none" data-hover-label={o.id}>{o.label}</text>
-              )}
             </g>
           );
         }
         if (o.kind === 'row-straight' || o.kind === 'row-arc') {
           const seatInteractive = !!focusId && tool === 'seat';
           return (
-            <g key={o.id} {...objectHoverEvents} {...(seatInteractive ? {} : selectDrag)}>
+            <g key={o.id} {...objectHoverEvents} {...(seatInteractive ? {} : selectDrag)} aria-label={`${o.label} (${o.seats.length} kursi)`}>
               {o.points[0] && <circle cx={o.points[0][0]} cy={o.points[0][1]} r={o.seats[0]?.radius ?? 8} fill="none" stroke={isSel ? '#2563eb' : '#64748b'} strokeWidth={(o.seats[0]?.radius ?? 8) / 4} strokeDasharray="4 3" />}
               {o.seats.map((s) => {
                 const secId = s.sectionId ?? o.sectionId ?? focusId ?? '';
@@ -608,24 +598,17 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
                 <circle key={`sel-${s.id}`} cx={s.x} cy={s.y} r={(s.radius ?? 8) * 1.25} fill="none"
                   stroke="#1d4ed8" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
               ))}
-              {(canvasHoverId === o.id || hoveredObjectId === o.id) && (
-                <text x={(o.points[0]?.[0] ?? 0) + 12} y={(o.points[0]?.[1] ?? 0) - 8} className="lbl" pointerEvents="none" data-hover-label={o.id}>{o.label} ({o.seats.length})</text>
-              )}
             </g>
           );
         }
-        const hoveredShape = canvasHoverId === o.id || hoveredObjectId === o.id;
         const fill = o.isSection
           ? sectionColor(o.id)
           : o.kind === 'stage' ? '#cbd5e1' : o.kind === 'import-draft' ? 'rgba(251,191,36,0.35)' : 'rgba(147,197,253,0.35)';
         const fillOpacity = o.isSection ? 0.18 : undefined;
         const stroke = o.isSection ? sectionColor(o.id) : o.kind === 'import-draft' ? '#dc2626' : o.kind === 'stage' ? '#475569' : '#3b82f6';
         return (
-          <g key={o.id} {...sectionEvents}>
+          <g key={o.id} {...sectionEvents} aria-label={o.label}>
             <polygon vectorEffect="non-scaling-stroke" points={ptsStr(o.points)} fill={fill} fillOpacity={fillOpacity} stroke={stroke} strokeWidth={isSel ? 3 : 2} strokeDasharray={o.kind === 'import-draft' && !o.isSection ? '10 6' : undefined} {...selectDrag} style={selStyle} />
-            {o.points[0] && o.id !== focusId && hoveredShape && <text x={o.points[0][0]} y={o.points[0][1] - 8} className="lbl" pointerEvents="none" data-hover-label={o.id}>
-              {o.isSection ? `§ ${o.label} · ${shapeName(o)}` : o.kind === 'import-draft' ? `draf: ${o.guess ?? '?'} — ${o.label}` : o.kind === 'section' ? `${o.label} · Polygon${o.price > 0 ? ` · Rp${o.price.toLocaleString('id-ID')}` : ''}` : o.label}
-            </text>}
           </g>
         );
       })}
