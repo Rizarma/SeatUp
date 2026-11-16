@@ -1,8 +1,8 @@
 import React from 'react';
 import SeatLayoutControls from './SeatLayoutControls';
 import {
-  Armchair, Circle, Hand, Theater, Download, FileUp, FolderOpen, Image as ImageIcon, Layers, PenTool, Save,
-  Shapes, Spline, Square, Trash2, TriangleAlert, Upload,
+  Armchair, Circle, Footprints, Hand, Podium, Download, FileUp, FolderOpen, Image as ImageIcon, Layers, PenTool, Save,
+  Shapes, Square, Trash2, TriangleAlert, Upload,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Pt, RowParams, ObjKind, Seat, VenueObject } from '../lib/venue';
@@ -392,14 +392,14 @@ function ToolOptions({ p, f, tool }: { p: Props; f: RowForm; tool: string }) {
   if (tool === 'stage') {
     return (
       <>
-        <CtxHead icon={Theater} title="Buat panggung" sub="Seret kotak di kanvas" />
+        <CtxHead icon={Podium} title="Buat panggung" sub="Seret kotak di kanvas" />
         <p className="muted">Panggung adalah dekorasi peta (bukan section): kursi tidak bisa dibuat di dalamnya.</p>
       </>
     );
   }
   return (
     <>
-      <CtxHead icon={Spline} title="Buat lorong" sub="Seret garis di kanvas" />
+      <CtxHead icon={Footprints} title="Buat lorong" sub="Seret garis di kanvas" />
       <Num label="Lebar lorong (px)" value={p.aisleWidth} onChange={p.setAisleWidth} min={4} max={120} />
       <p className="muted">Lorong memotong area jalan; kursi yang footprint-nya menyentuh lorong tidak dihitung valid.</p>
     </>
@@ -591,8 +591,8 @@ function ObjectProps({ p, selected, markOk, markReason }: {
   const isRow = selected.kind === 'row-straight' || selected.kind === 'row-arc';
   const invalidN = selected.seats.filter((s) => s.invalid).length;
   const KindIcon = selected.kind === 'vector' ? PenTool
-    : selected.kind === 'aisle' ? Spline
-    : selected.kind === 'stage' ? Theater
+    : selected.kind === 'aisle' ? Footprints
+    : selected.kind === 'stage' ? Podium
     : isRow ? Armchair
     : selected.kind === 'import-draft' ? FileUp : Shapes;
   return (

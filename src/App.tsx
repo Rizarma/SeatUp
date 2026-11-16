@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, Armchair, Hand, Circle, MousePointerClick, Theater, Download, Eye, FolderOpen, LayoutTemplate, MousePointer2, PanelRight, PencilRuler, Pentagon,
-  Redo2, Save, Spline, Square, Trash2, Undo2, Upload,
+  ArrowLeft, Armchair, Hand, Circle, MousePointerClick, Podium, Footprints, Download, Eye, FolderOpen, LayoutTemplate, MousePointer2, PanelRight, PencilRuler, Pentagon,
+  Redo2, Save, Square, Trash2, Undo2, Upload,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { GenSeat, Pt, RowParams, VenueObject } from './lib/venue';
@@ -25,10 +25,10 @@ const TOOLS: { id: Tool; label: string; hint: string; Icon: LucideIcon }[] = [
   { id: 'select', label: 'Pilih/geser', hint: 'Pilih atau geser objek', Icon: MousePointer2 },
   { id: 'seat', label: 'Pilih kursi', hint: 'Klik pilih kursi · Shift/Cmd/Ctrl multi · seret marquee', Icon: MousePointerClick },
   { id: 'polygon', label: 'Polygon', hint: 'Gambar polygon', Icon: Pentagon },
-  { id: 'stage', label: 'Panggung', hint: 'Buat panggung (seret kotak)', Icon: Theater },
+  { id: 'stage', label: 'Panggung', hint: 'Buat panggung (seret kotak)', Icon: Podium },
   { id: 'rectangle', label: 'Kotak', hint: 'Buat kotak (seret di kanvas)', Icon: Square },
   { id: 'circle', label: 'Lingkaran', hint: 'Buat lingkaran (seret diameter di kanvas)', Icon: Circle },
-  { id: 'aisle', label: 'Lorong', hint: 'Buat lorong (seret garis)', Icon: Spline },
+  { id: 'aisle', label: 'Lorong', hint: 'Buat lorong (seret garis)', Icon: Footprints },
   { id: 'row', label: 'Baris kursi', hint: 'Buat baris kursi', Icon: Armchair },
 ];
 
@@ -225,6 +225,7 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
           aria-label="Buka tutup panel samping" data-tip="Panel samping" onClick={() => setPanelOpen((v) => !v)}>
           <PanelRight size={20} strokeWidth={2} aria-hidden="true" />
         </button>
+        {(focusedSection || selectedObj?.isSection) && (
         <div className="section-navigation">
           {focusedSection ? <>
             <button onClick={leaveSection}><ArrowLeft size={16} /> Kembali ke venue</button>
@@ -247,10 +248,10 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
               <button onClick={() => selectSeats([])}>Batal pilih</button>
             </>}
           </> : <>
-          <span>Kursi disembunyikan di venue. Klik dua kali section untuk mengatur kursi di dalamnya.</span>
             {selectedObj?.isSection && <button onClick={() => enterSection(selectedObj.id)}>Edit isi section</button>}
           </>}
         </div>
+        )}
         {rowDrag && dragLayout && <div className="seat-drag-summary" role="status">
           {dragLayout.params.rows} baris × {dragLayout.params.seatsPerRow} kursi · {validCount} valid · {rejectedCount} ditolak
           {dragLayout.limited && ' · Maksimal 60 baris × 200 kursi per drag'}
@@ -368,34 +369,34 @@ function Shell() {
             <button
               className={tab === 'editor' ? 'on' : ''} aria-pressed={tab === 'editor'}
               aria-label="Mode editor" data-tip="Mode editor" onClick={() => setTab('editor')}
-            ><PencilRuler size={20} strokeWidth={2} aria-hidden="true" /></button>
+            ><PencilRuler size={18} strokeWidth={2} aria-hidden="true" /></button>
             <button
               className={tab === 'preview' ? 'on' : ''} aria-pressed={tab === 'preview'}
               aria-label="Mode preview pembeli" data-tip="Preview pembeli" onClick={() => setTab('preview')}
-            ><Eye size={20} strokeWidth={2} aria-hidden="true" /></button>
+            ><Eye size={18} strokeWidth={2} aria-hidden="true" /></button>
           </div>
           <span className="nsep" aria-hidden="true" />
           <div className="nrow" role="toolbar" aria-label="Aksi project">
             <button className="nbtn" onClick={undo} disabled={past.length === 0}
               aria-label={`Urungkan (${past.length})`} data-tip={`Urungkan (${past.length})`}>
-              <Undo2 size={20} strokeWidth={2} aria-hidden="true" /></button>
+              <Undo2 size={18} strokeWidth={2} aria-hidden="true" /></button>
             <button className="nbtn" onClick={redo} disabled={future.length === 0}
               aria-label={`Ulangi (${future.length})`} data-tip={`Ulangi (${future.length})`}>
-              <Redo2 size={20} strokeWidth={2} aria-hidden="true" /></button>
+              <Redo2 size={18} strokeWidth={2} aria-hidden="true" /></button>
             <button className="nbtn" onClick={() => { loadDoc(sampleVenue()); setMsg('Contoh venue-U dimuat.'); }}
               aria-label="Muat contoh venue-U" data-tip="Contoh venue-U">
-              <LayoutTemplate size={20} strokeWidth={2} aria-hidden="true" /></button>
+              <LayoutTemplate size={18} strokeWidth={2} aria-hidden="true" /></button>
             <button className="nbtn danger" onClick={() => { if (doc.objects.length === 0 || confirm('Buang semua objek?')) loadDoc(emptyVenue()); }}
               aria-label="Bersihkan semua objek" data-tip="Bersihkan">
-              <Trash2 size={20} strokeWidth={2} aria-hidden="true" /></button>
+              <Trash2 size={18} strokeWidth={2} aria-hidden="true" /></button>
             <button className="nbtn" onClick={doSave} aria-label="Simpan lokal" data-tip="Simpan lokal">
-              <Save size={20} strokeWidth={2} aria-hidden="true" /></button>
+              <Save size={18} strokeWidth={2} aria-hidden="true" /></button>
             <button className="nbtn" onClick={doLoad} aria-label="Muat simpanan lokal" data-tip="Muat lokal">
-              <FolderOpen size={20} strokeWidth={2} aria-hidden="true" /></button>
+              <FolderOpen size={18} strokeWidth={2} aria-hidden="true" /></button>
             <button className="nbtn" onClick={doExport} aria-label="Ekspor JSON tervalidasi" data-tip="Ekspor JSON">
-              <Download size={20} strokeWidth={2} aria-hidden="true" /></button>
+              <Download size={18} strokeWidth={2} aria-hidden="true" /></button>
             <label className="nbtn filelabel" aria-label="Buka project JSON" data-tip="Buka project JSON">
-              <Upload size={20} strokeWidth={2} aria-hidden="true" />
+              <Upload size={18} strokeWidth={2} aria-hidden="true" />
               <input type="file" accept="application/json" hidden onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) void doImportJson(f);

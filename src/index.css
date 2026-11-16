@@ -33,8 +33,18 @@ header {
   display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: nowrap;
   border-bottom: 1px solid var(--border);
 }
-header h1 { font-size: 15px; margin: 0; white-space: nowrap; }
-.brand { min-width: 0; flex-shrink: 1; }
+header h1 {
+  font-size: clamp(19px, 14px + 0.6vw, 23px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  margin: 0;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+}
+.brand { min-width: 0; flex-shrink: 1; display: flex; align-items: center; }
 .brand .muted { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; font-size: 12px; }
 .navbar-actions { flex-shrink: 0; }
 nav { display: flex; gap: 8px; }
@@ -226,9 +236,9 @@ button:focus-visible, .btn:focus-visible, .panel details > summary:focus-visible
 .drawer-close { display: none; }
 .navbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* Segmented toggle dua mode */
-.seg { display: flex; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 3px; gap: 2px; }
+.seg { display: flex; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 3px; gap: 2px; align-items: center; }
 .seg button {
-  position: relative; width: 44px; height: 40px; min-height: 40px; padding: 0;
+  position: relative; width: 38px; height: 36px; min-height: 36px; padding: 0;
   display: grid; place-items: center; border-radius: 9px;
   border-color: transparent; background: transparent; color: var(--muted);
 }
@@ -237,13 +247,13 @@ button:focus-visible, .btn:focus-visible, .panel details > summary:focus-visible
 .nrow { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .nsep { width: 1px; align-self: stretch; background: var(--border); margin: 4px 2px; }
 .nbtn {
-  position: relative; width: 40px; height: 40px; min-height: 40px; padding: 0;
+  position: relative; width: 38px; height: 36px; min-height: 36px; padding: 0;
   display: grid; place-items: center; border-radius: 10px;
   border-color: transparent; color: var(--muted);
 }
 .nbtn:hover:not(:disabled) { color: var(--text); border-color: var(--border); }
 .nbtn:disabled { opacity: 0.4; }
-.nbtn svg, .seg button svg { display: block; }
+.nbtn svg, .seg button svg { display: block; width: 18px; height: 18px; }
 label.nbtn { cursor: pointer; }
 /* Tooltip navbar: muncul ke BAWAH agar tak terpotong top viewport */
 .nbtn::after, .seg button::after, .panel-toggle::after {
@@ -355,12 +365,22 @@ label.btn.filepick input { max-width: 100%; }
 
 @media (max-width: 480px) {
   header { height: 56px; padding-left: 10px; padding-right: 10px; gap: 8px; }
-  header h1 { font-size: 15px; }
+  header h1 { font-size: 18px; min-height: 40px; }
   .brand .muted { display: none; }
   .navbar-actions { gap: 6px; overflow-x: auto; max-width: 62vw; }
   .nrow { flex-wrap: nowrap; }
+  .nbtn, .seg button { width: 40px; height: 40px; min-height: 40px; }
   .dock { gap: 2px; padding: 5px; border-radius: 14px; bottom: calc(8px + env(safe-area-inset-bottom)); }
   .dock button { width: 44px; height: 44px; }
+}
+
+/* Layar sangat lebar (>2k): skala brand + kontrol proporsional */
+@media (min-width: 2000px) {
+  header { height: 68px; padding: 0 20px; gap: 16px; }
+  header h1 { font-size: 24px; min-height: 44px; }
+  .navbar-actions { gap: 12px; }
+  .seg button, .nbtn { width: 44px; height: 44px; min-height: 44px; }
+  .nbtn svg, .seg button svg { width: 20px; height: 20px; }
 }
 
 /* Orion Pick Seat presentation, scoped to the local preview. */
