@@ -15,6 +15,74 @@ export function Num({ label, value, onChange, min, max, step }: {
   );
 }
 
+/**
+ * Input teks yang commit sekali (blur/Enter), bukan tiap ketikan.
+ * Mencegah banjir history undo saat edit label objek.
+ */
+export function CommittedText({ label, value, onCommit, ariaLabel }: {
+  label: string; value: string; onCommit: (v: string) => void; ariaLabel?: string;
+}) {
+  const [draft, setDraft] = React.useState(value);
+  const lastProp = React.useRef(value);
+  if (lastProp.current !== value) {
+    lastProp.current = value;
+    if (draft !== value) setDraft(value);
+  }
+  const commit = () => {
+    if (draft !== value) onCommit(draft);
+  };
+  return (
+    <label className="fld"><span>{label}</span>
+      <input
+        value={draft} aria-label={ariaLabel}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          if (e.key === 'Escape') setDraft(value);
+        }}
+      />
+    </label>
+  );
+}
+
+/**
+ * Input angka yang commit sekali (blur/Enter). Nilai invalid diabaikan
+ * dan dikembalikan ke prop terakhir agar store tidak kena NaN.
+ */
+export function CommittedNum({ label, value, onCommit, min, max, step, ariaLabel }: {
+  label: string; value: number; onCommit: (v: number) => void; min?: number; max?: number; step?: number; ariaLabel?: string;
+}) {
+  const [draft, setDraft] = React.useState(String(value));
+  const lastProp = React.useRef(value);
+  if (lastProp.current !== value) {
+    lastProp.current = value;
+    if (draft !== String(value)) setDraft(String(value));
+  }
+  const commit = () => {
+    const n = Number(draft);
+    if (!Number.isFinite(n)) {
+      setDraft(String(value));
+      return;
+    }
+    if (n !== value) onCommit(n);
+    else if (draft !== String(value)) setDraft(String(value));
+  };
+  return (
+    <label className="fld"><span>{label}</span>
+      <input
+        type="number" value={draft} min={min} max={max} step={step ?? 1} aria-label={ariaLabel}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          if (e.key === 'Escape') setDraft(String(value));
+        }}
+      />
+    </label>
+  );
+}
+
 /** Header konteks panel (ikon + judul + sub). */
 export function CtxHead({ icon: Icon, title, sub }: { icon: LucideIcon; title: string; sub: string }) {
   return (

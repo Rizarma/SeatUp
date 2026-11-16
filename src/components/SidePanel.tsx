@@ -11,7 +11,7 @@ import { markEligibility } from '../lib/panelContext';
 import { shapeName } from '../lib/shapeLabel';
 import { SECTION_PALETTE, isValidSectionColor, sectionColorById } from '../lib/sectionColor';
 import { withoutObject, withObject } from '../lib/docObjects';
-import { CtxHead, Num, ObjGroup } from './ui';
+import { CommittedNum, CommittedText, CtxHead, Num, ObjGroup } from './ui';
 import { useStore } from '../store';
 
 interface Props {
@@ -570,12 +570,15 @@ function ObjectProps({ p, selected, markOk, markReason }: {
         </div>
       </div>
       <div className="object-config-group">
-      <label className="fld"><span>Nama</span>
-        <input value={selected.label} onChange={(e) => {
-          const v = e.target.value;
+      <CommittedText
+        key={selected.id}
+        label="Nama"
+        value={selected.label}
+        onCommit={(v) => {
           update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === selected.id ? { ...o, label: v } : o)) }));
-        }} />
-      </label>
+        }}
+      />
+      <p className="muted">Nama tersimpan saat Enter/klik di luar (1 langkah undo).</p>
       </div>
       <div className="object-config-group">
         <label className="document-option">
@@ -605,7 +608,7 @@ function ObjectProps({ p, selected, markOk, markReason }: {
         </label>
       )}
       {(selected.kind === 'section' || isRow) && (
-        <Num label="Harga/kursi (Rp)" value={selected.price} onChange={(v) => {
+        <CommittedNum key={`price-${selected.id}`} label="Harga/kursi (Rp)" value={selected.price} onCommit={(v) => {
           update((d) => ({ ...d, objects: d.objects.map((o) => {
             if (o.id !== selected.id) return o;
             return { ...o, price: v, seats: o.seats.map((s) => ({ ...s, price: v })) };
@@ -613,7 +616,7 @@ function ObjectProps({ p, selected, markOk, markReason }: {
         }} min={0} step={5000} />
       )}
       {selected.kind === 'aisle' && (
-        <Num label="Lebar lorong (px)" value={selected.width} onChange={(v) => {
+        <CommittedNum key={`width-${selected.id}`} label="Lebar lorong (px)" value={selected.width} onCommit={(v) => {
           update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === selected.id ? { ...o, width: v } : o)) }));
         }} min={4} max={120} />
       )}
