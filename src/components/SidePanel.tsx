@@ -301,16 +301,18 @@ function ToolOptions({ p, f, tool }: { p: Props; f: RowForm; tool: string }) {
     );
   }
   if (tool === 'row') {
+    const targetLabel = p.focusId
+      ? p.sections.find((s) => s.id === p.focusId)?.label ?? p.sections[0]?.label ?? null
+      : p.sectionId ? p.sections.find((s) => s.id === p.sectionId)?.label ?? null : null;
     return (
       <>
-        <CtxHead icon={Armchair} title="Buat baris kursi" sub={p.sectionId ? `Target: § ${p.sections.find((s) => s.id === p.sectionId)?.label ?? '?'}` : 'Pilih section target dulu'} />
+        <CtxHead icon={Armchair} title="Buat baris kursi" sub={targetLabel ? `Target: § ${targetLabel}` : 'Masuk ke section dulu'} />
         <p className="muted">Seret kanan/kiri untuk satu baris, seret atas/bawah untuk beberapa baris lurus. Jumlah mengikuti area dan jarak kursi/baris; lepaskan untuk membuat. Esc untuk batal. Klik biasa memakai mode dan jumlah di bawah.</p>
-        <label className="fld"><span>Section target</span>
-          <select value={p.sectionId ?? ''} onChange={(e) => p.setSectionId(e.target.value || null)}>
-            {p.sections.length === 0 && <option value="">— belum ada section —</option>}
-            {p.sections.map((s) => <option key={s.id} value={s.id}>§ {s.label}</option>)}
-          </select>
-        </label>
+        {p.focusId ? (
+          <p className="muted">Target: § {targetLabel} (section fokus). Ganti target via Kembali ke venue → klik dua kali section lain.</p>
+        ) : (
+          <p className="muted">Masuk ke section dulu (klik dua kali section di kanvas) — baris hanya bisa dibuat di dalam section fokus.</p>
+        )}
         <label className="fld"><span>Mode</span>
           <select value={f.mode} onChange={(e) => p.setRowForm({ ...f, mode: e.target.value as 'straight' | 'arc' })}>
             <option value="straight">Lurus</option>
@@ -329,10 +331,9 @@ function ToolOptions({ p, f, tool }: { p: Props; f: RowForm; tool: string }) {
         <Num label="Offset label" value={f.rowLabelOffset} onChange={(v) => p.setRowForm({ ...f, rowLabelOffset: v })} min={0} max={25} />
         <Num label="Harga (Rp)" value={f.price} onChange={(v) => p.setRowForm({ ...f, price: v })} min={0} step={5000} />
         <p className="muted">{p.anchor ? `Jangkar: ${p.anchor[0]}, ${p.anchor[1]}.` : 'Klik kanvas untuk jangkar (awal baris / pusat busur).'}</p>
-        {p.validCount !== null && p.sectionId && (
+        {p.validCount !== null && (p.focusId ?? p.sectionId) && (
           <p className="muted">{p.validCount} kandidat valid (footprint penuh di dalam) · {p.rejectedCount} ditolak (keluar/lubang/lorong).</p>
         )}
-        {!p.sectionId && <p className="muted">Masuk ke section dulu (klik dua kali section di kanvas) — baris hanya bisa dibuat di dalam section fokus.</p>}
       </>
     );
   }
