@@ -108,6 +108,9 @@ button.danger { border-color: var(--danger); color: var(--danger); }
 .dock button:hover { color: var(--text); border-color: var(--border); }
 .dock button.on { color: #fff; }
 .dock button svg { display: block; }
+/* Grup + separator dock: select, hand | stage, lorong | polygon, rectangle, circle */
+.dock .dgroup { display: flex; align-items: center; gap: 4px; }
+.dock .dsep { width: 1px; align-self: stretch; background: var(--border); margin: 6px 4px; }
 /* Tooltip di atas dock: hover DAN focus, nama aksesibel tetap di aria-label */
 .dock button::after {
   content: attr(data-tip);

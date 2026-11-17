@@ -23,17 +23,35 @@ import SidePanel from './components/SidePanel';
 import type { RowForm } from './components/SidePanel';
 import Preview from './components/Preview';
 
-const TOOLS: { id: Tool; label: string; hint: string; Icon: LucideIcon }[] = [
-  { id: 'hand', label: 'Geser kanvas', hint: 'Hand tool — seret untuk navigasi kanvas', Icon: Hand },
-  { id: 'select', label: 'Pilih/geser', hint: 'Pilih atau geser objek', Icon: MousePointer2 },
-  { id: 'seat', label: 'Pilih kursi', hint: 'Klik pilih kursi · Shift/Cmd/Ctrl multi · seret marquee', Icon: MousePointerClick },
-  { id: 'polygon', label: 'Polygon', hint: 'Gambar polygon', Icon: Pentagon },
-  { id: 'stage', label: 'Panggung', hint: 'Buat panggung (seret kotak)', Icon: Podium },
-  { id: 'rectangle', label: 'Kotak', hint: 'Buat kotak (seret di kanvas)', Icon: Square },
-  { id: 'circle', label: 'Lingkaran', hint: 'Buat lingkaran (seret diameter di kanvas)', Icon: Circle },
+const TOOLS: { id: Tool; label: string; hint: string; Icon: LucideIcon; shortcut?: string }[] = [
+  { id: 'select', label: 'Select', hint: 'Pilih atau geser objek', Icon: MousePointer2, shortcut: 'V' },
+  { id: 'hand', label: 'Hand', hint: 'Seret untuk navigasi kanvas', Icon: Hand, shortcut: 'H' },
+  { id: 'stage', label: 'Stage', hint: 'Buat stage (seret kotak)', Icon: Podium },
   { id: 'aisle', label: 'Lorong', hint: 'Buat lorong (seret garis)', Icon: Footprints },
+  { id: 'polygon', label: 'Polygon', hint: 'Gambar polygon', Icon: Pentagon },
+  { id: 'rectangle', label: 'Rectangle', hint: 'Buat rectangle (seret di kanvas)', Icon: Square },
+  { id: 'circle', label: 'Circle', hint: 'Buat circle (seret diameter di kanvas)', Icon: Circle },
+  { id: 'seat', label: 'Pilih kursi', hint: 'Klik pilih kursi · Shift/Cmd/Ctrl multi · seret marquee', Icon: MousePointerClick },
   { id: 'row', label: 'Baris kursi', hint: 'Buat baris kursi', Icon: Armchair },
 ];
+
+// Urutan + separator dock: [select, hand] | [stage, lorong] | [polygon, rectangle, circle]
+const DOCK_GROUPS_VENUE: Tool[][] = [
+  ['select', 'hand'],
+  ['stage', 'aisle'],
+  ['polygon', 'rectangle', 'circle'],
+];
+const DOCK_GROUPS_FOCUS: Tool[][] = [
+  ['select', 'hand'],
+  ['seat', 'row'],
+];
+
+// Fokus yang menempel di tombol dock membuat outline :focus-visible + tooltip
+// ::after tertinggal di ikon lama saat tool diganti via shortcut. Lepaskan selalu.
+function blurDockButton() {
+  const el = document.activeElement as HTMLElement | null;
+  if (el && el.closest?.('.dock')) el.blur();
+}
 
 const DEFAULT_ROWFORM: RowForm = {
   mode: 'straight', rows: 3, seatsPerRow: 12, seatGap: 26, rowGap: 34,
@@ -57,9 +75,29 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
   const [hoveredObjectId, setHoveredObjectId] = useState<string | null>(null);
   const { doc, tool, selectedId, selectedSeatIds } = state;
 
+  // Shortcut: V = Select, H = Hand (abaikan saat mengetik di input/textarea/select).
+  // Lepaskan fokus dari tombol dock agar outline + tooltip tak menempel di ikon lama.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === 'v') { cancelRowDrag(); setTool('select'); blurDockButton(); }
+      else if (k === 'h') { cancelRowDrag(); setTool('hand'); blurDockButton(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [cancelRowDrag, setTool]);
+
   const sections = useMemo(() => doc.objects.filter((o) => o.isSection), [doc.objects]);
   const focusedSection = sections.find(o => o.id === focusId) ?? null;
   const activeFocusId = focusedSection?.id ?? null;
+
+  const toolById = useMemo(() => new Map(TOOLS.map((t) => [t.id, t])), []);
+  const dockGroups = (activeFocusId ? DOCK_GROUPS_FOCUS : DOCK_GROUPS_VENUE)
+    .map((g) => g.map((id) => toolById.get(id)!).filter(Boolean))
+    .filter((g) => g.length > 0);
   // Baris kursi hanya dibuat di dalam section fokus. Venue tidak punya target.
   const effSectionId = activeFocusId;
   const effSection = focusedSection;
@@ -293,17 +331,29 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
         </div>}
         <EditorCanvas hoveredObjectId={hoveredObjectId} onRowDrag={handleRowDrag} onRowRelease={releaseRowDrag} onCancelRowDrag={cancelRowDrag} rowDrag={rowDrag} focusId={activeFocusId} onFocusSection={enterSection} seatRadius={8 * placementScale} anchor={anchor} onAnchor={setAnchor} showBg={showBg} ghosts={ghosts} aisleWidth={aisleWidth} />
         <div className="dock" role="toolbar" aria-label="Alat editor">
-          {TOOLS.filter(t => activeFocusId ? (t.id === 'hand' || t.id === 'select' || t.id === 'seat' || t.id === 'row') : (t.id !== 'seat' && t.id !== 'row')).map((t) => (
-            <button
-              key={t.id}
-              className={tool === t.id ? 'on' : ''}
-              aria-pressed={tool === t.id}
-              aria-label={`${t.label} — ${t.hint}`}
-              data-tip={`${t.label} — ${t.hint}`}
-              onClick={() => { cancelRowDrag(); setTool(t.id); }}
-            >
-              <t.Icon size={20} strokeWidth={2} aria-hidden="true" />
-            </button>
+          {dockGroups.map((group, gi) => (
+            <span key={gi} className="dgroup" role="group" aria-label={gi === 0 ? 'Pilih alat' : gi === 1 ? 'Stage dan lorong' : 'Bentuk'}>
+              {group.map((t) => {
+                const tip = t.shortcut
+                  ? `${t.label} — ${t.shortcut}`
+                  : ['stage', 'aisle', 'polygon', 'rectangle', 'circle'].includes(t.id)
+                    ? t.label
+                    : `${t.label} — ${t.hint}`;
+                return (
+                  <button
+                    key={t.id}
+                    className={tool === t.id ? 'on' : ''}
+                    aria-pressed={tool === t.id}
+                    aria-label={tip}
+                    data-tip={tip}
+                    onClick={(e) => { cancelRowDrag(); setTool(t.id); e.currentTarget.blur(); }}
+                  >
+                    <t.Icon size={20} strokeWidth={2} aria-hidden="true" />
+                  </button>
+                );
+              })}
+              {gi < dockGroups.length - 1 && <span className="dsep" aria-hidden="true" />}
+            </span>
           ))}
         </div>
       </div>

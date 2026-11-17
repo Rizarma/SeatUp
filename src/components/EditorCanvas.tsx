@@ -60,7 +60,7 @@ function translateObj(o: VenueObject, dx: number, dy: number): VenueObject {
 }
 
 export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRowRelease, onCancelRowDrag, focusId, onFocusSection, seatRadius, anchor, onAnchor, showBg, ghosts, aisleWidth }: Props) {
-  const { state, update, select, selectSeats } = useStore();
+  const { state, update, select, selectSeats, setTool } = useStore();
   const { doc, tool, selectedId, selectedSeatIds } = state;
   const selectedSeatSet = useMemo(() => new Set(selectedSeatIds), [selectedSeatIds]);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -183,13 +183,17 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     setDraft([]);
   }, [doc.objects.length, update, select]);
 
-  // keyboard: Enter tutup polygon, Esc batal, Delete hapus (kursi dulu, baru objek)
+  // keyboard: Enter tutup polygon, Esc batal dulu lalu pindah ke Select (seperti V), Delete hapus (kursi dulu, baru objek)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName ?? '').toLowerCase();
       if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
       if (e.key === 'Enter' && draft.length >= 3) commitPolygon(draft);
       if (e.key === 'Escape') {
+        const hadWork = draft.length > 0 || ghost !== null || drag !== null
+          || previewObj !== null || scaleDrag !== null || rotateDrag !== null
+          || seatMarquee !== null || rowGesture.current !== null || seatGesture.current !== null
+          || rowDrag !== null || anchor !== null || selectedId !== null || selectedSeatIds.length > 0;
         rowGesture.current = null;
         seatGesture.current = null;
         setSeatMarquee(null);
@@ -201,6 +205,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         onAnchor(null);
         selectSeats([]);
         select(null);
+        // Esc dua tahap ala Figma: pertama batalkan dulu, Esc berikutnya (tak ada kerja) pindah ke Select.
+        if (!hadWork && tool !== 'select') setTool('select');
+        // Lepaskan fokus dari tombol dock agar outline + tooltip tak menempel di ikon lama.
+        const activeEl = document.activeElement as HTMLElement | null;
+        if (activeEl && activeEl.closest?.('.dock')) activeEl.blur();
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedSeatIds.length > 0) {
@@ -224,7 +233,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [draft, commitPolygon, selectedId, selectedSeatIds, update, select, selectSeats, onAnchor, onCancelRowDrag, focusId]);
+  }, [draft, ghost, drag, previewObj, scaleDrag, rotateDrag, seatMarquee, rowDrag, anchor, tool, commitPolygon, selectedId, selectedSeatIds, update, select, selectSeats, setTool, onAnchor, onCancelRowDrag, focusId]);
 
   const onSvgPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.button === 1 || (e.button === 0 && (e.altKey || tool === 'hand'))) {
