@@ -10,6 +10,7 @@ import { grayscaleToDrafts, guessKind } from './lib/raster';
 import { parseSvgLayout } from './lib/svgImport';
 import type { DraftShape } from './lib/raster';
 import { classifySeats, sectionGeomFor } from './lib/contain';
+import { estimateCapacity } from './lib/capacity';
 import { validateVenueDoc, parseVenueJson } from './lib/validate';
 import { markEligibility } from './lib/panelContext';
 import { saveLocal, loadLocal, downloadJson, readTextFile, readImageFile } from './lib/storage';
@@ -123,6 +124,15 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
   const effGeom = useMemo(() => (effSection ? sectionGeomFor(effSection) : null), [effSection]);
 
   const placementScale = activeFocusId ? seatScale : 1;
+  const capacity = useMemo(() => {
+    if (!effGeom || !effSection || !activeFocusId) return null;
+    const stepX = Math.max(8, Number.isFinite(rowForm.seatGap) ? rowForm.seatGap : 26) * placementScale;
+    const stepY = Math.max(8, Number.isFinite(rowForm.rowGap) ? rowForm.rowGap : 34) * placementScale;
+    const aisles = doc.objects.filter((o) => o.kind === 'aisle');
+    const existing = doc.objects.flatMap((o) => o.seats).filter((s) => s.sectionId === activeFocusId && !s.invalid).length;
+    const est = estimateCapacity(effGeom, stepX, stepY, 8 * placementScale, aisles, existing);
+    return { ...est, existing };
+  }, [effGeom, effSection, activeFocusId, rowForm.seatGap, rowForm.rowGap, placementScale, doc.objects]);
   const enterSection = (id: string) => {
     const section = sections.find(o => o.id === id);
     const geom = section && sectionGeomFor(section);
@@ -337,6 +347,11 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
             <span>{doc.objects.flatMap(o => o.seats).filter(s => s.sectionId === activeFocusId).length} kursi</span>
             <label>Skala kursi baru <input aria-label="Skala kursi baru (%)" type="number" min={0.1} max={100} step={0.1}
               value={Number((seatScale * 100).toFixed(2))} onChange={e => { const n = Number(e.target.value); if (n >= 0.1 && n <= 100) setSeatScale(n / 100); }} /> %</label>
+            {capacity && (
+              <span role="status" title={`Grid baris lurus: kolom ${Math.max(8, rowForm.seatGap) * placementScale}px × baris ${Math.max(8, rowForm.rowGap) * placementScale}px, footprint penuh di dalam section dan di luar lorong.${capacity.coarse ? ' Estimasi kasar via luas (grid eksak terlalu besar).' : ''}`}>
+                ~{capacity.total} muat · sisa ~{capacity.remaining}{capacity.coarse ? ' (kasar)' : ''}
+              </span>
+            )}
             {selectedSeatIds.length > 0 && <>
               <span role="status">{selectedSeatIds.length} kursi terpilih · Delete hapus kursi saja</span>
               <button aria-label={`Hapus ${selectedSeatIds.length} kursi terpilih`} onClick={() => {
