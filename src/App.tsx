@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, Armchair, Hand, Circle, MousePointerClick, Podium, Footprints, Download, Eye, FolderOpen, LayoutTemplate, MousePointer2, PanelRight, PencilRuler, Pentagon,
+  ArrowLeft, Armchair, Hand, Circle, MousePointerClick, Podium, Footprints, Download, Eye, FolderOpen, MousePointer2, PanelRight, PencilRuler, Pentagon,
   Redo2, Save, Square, Trash2, Undo2, Upload,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { GenSeat, Pt, RowParams, VenueObject } from './lib/venue';
-import { arcSeats, straightSeats, uid, emptyVenue, sampleVenue } from './lib/venue';
+import { arcSeats, straightSeats, uid, emptyVenue } from './lib/venue';
 import { grayscaleToDrafts, guessKind } from './lib/raster';
 import { parseSvgLayout } from './lib/svgImport';
 import type { DraftShape } from './lib/raster';
@@ -463,9 +463,6 @@ function Shell() {
             <button className="nbtn" onClick={redo} disabled={future.length === 0}
               aria-label={`Ulangi (${future.length})`} data-tip={`Ulangi (${future.length})`}>
               <Redo2 size={18} strokeWidth={2} aria-hidden="true" /></button>
-            <button className="nbtn" onClick={() => { loadDoc(sampleVenue()); setMsg('Contoh venue-U dimuat.'); }}
-              aria-label="Muat contoh venue-U" data-tip="Contoh venue-U">
-              <LayoutTemplate size={18} strokeWidth={2} aria-hidden="true" /></button>
             <button className="nbtn danger" onClick={() => { if (doc.objects.length === 0 || confirm('Buang semua objek?')) loadDoc(emptyVenue()); }}
               aria-label="Bersihkan semua objek" data-tip="Bersihkan">
               <Trash2 size={18} strokeWidth={2} aria-hidden="true" /></button>
