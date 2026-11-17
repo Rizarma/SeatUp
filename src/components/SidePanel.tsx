@@ -383,12 +383,13 @@ function SectionProps({ p, f, tool, selected, onRequestDelete }: {
       ) : tool === 'row' ? (
         <SectionRowPanel p={p} f={f} active={active} />
       ) : tool === 'seat' ? (
-        <ToolShell icon={Armchair} title="Pilih kursi" sub="Klik · Shift/Cmd multi · seret marquee">
+        <ToolShell icon={Armchair} title="Pilih kursi" sub="Klik = sebaris · 2x klik = 1 kursi · Shift multi">
           <div className="object-config-group">
             <h4 className="subh">1 · Cara memilih</h4>
             <ToolSteps items={[
-              'Klik 1 kursi untuk memilih',
-              'Shift / Cmd / Ctrl + klik untuk multi-pilih',
+              'Klik 1 kursi untuk memilih sebaris penuh',
+              'Klik 2x cepat untuk 1 kursi spesifik',
+              'Shift / Cmd / Ctrl + klik untuk multi-pilih satuan',
               'Seret area kosong untuk marquee blok sekaligus',
             ]} />
           </div>
@@ -587,12 +588,13 @@ function ToolOptions({ p, tool }: { p: Props; f: RowForm; tool: string }) {
   }
   if (tool === 'seat') {
     return (
-      <ToolShell icon={Armchair} title="Pilih kursi" sub="Klik pilih · Shift/Cmd/Ctrl multi · seret marquee">
+      <ToolShell icon={Armchair} title="Pilih kursi" sub="Klik = sebaris · 2x klik = 1 kursi · Shift multi">
         <div className="object-config-group">
           <h4 className="subh">Cara pakai</h4>
           <ToolSteps items={[
-            'Klik 1 kursi untuk memilih',
-            'Shift / Cmd / Ctrl + klik untuk multi-pilih',
+            'Klik 1 kursi untuk memilih sebaris penuh',
+            'Klik 2x cepat untuk 1 kursi spesifik',
+            'Shift / Cmd / Ctrl + klik untuk multi-pilih satuan',
             'Seret marquee untuk memilih blok sekaligus',
           ]} />
           <p className="muted">Tekan Delete untuk hapus kursi saja (objek baris tetap). Batal via tombol di banner atas kanvas.</p>

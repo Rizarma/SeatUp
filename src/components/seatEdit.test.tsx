@@ -48,9 +48,11 @@ function ptr(type: string, init: PointerEventInit & { clientX?: number; clientY?
   return new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, ...init });
 }
 
-it('memilih 1 kursi, edit baris 1 undo, ID/koordinat/section/harga kategori tetap', async () => {
+it('klik tunggal memilih sebaris, klik ganda 1 kursi; edit baris 1 undo, ID/koordinat/section/harga kategori tetap', async () => {
   const { host, svg, click, save, titled } = await mount();
   expect(titled()).toHaveLength(6);
+  await act(async () => { titled()[0].dispatchEvent(ptr('pointerdown', { clientX: 10, clientY: 10 })); });
+  expect(host.textContent).toContain('6 kursi terpilih');
   await act(async () => { titled()[0].dispatchEvent(ptr('pointerdown', { clientX: 10, clientY: 10 })); });
   expect(host.textContent).toContain('1 kursi terpilih');
   // Harga ngikut kategori: tidak ada input harga, hanya info kategori.
@@ -84,9 +86,11 @@ it('memilih 1 kursi, edit baris 1 undo, ID/koordinat/section/harga kategori teta
   void svg;
 });
 
-it('shift multi-select + Delete hanya hapus kursi, objek utuh, undo pulihkan', async () => {
+it('klik ganda + shift multi-select satuan; Delete hanya hapus kursi, objek utuh, undo pulihkan', async () => {
   const { host, click, save, titled } = await mount();
   await act(async () => { titled()[0].dispatchEvent(ptr('pointerdown', { clientX: 10, clientY: 10 })); });
+  await act(async () => { titled()[0].dispatchEvent(ptr('pointerdown', { clientX: 10, clientY: 10 })); });
+  expect(host.textContent).toContain('1 kursi terpilih');
   await act(async () => { titled()[1].dispatchEvent(ptr('pointerdown', { clientX: 12, clientY: 10, shiftKey: true })); });
   expect(host.textContent).toContain('2 kursi terpilih');
   expect(host.textContent).toContain('(campuran)');
@@ -118,10 +122,12 @@ it('marquee memilih blok baris A saja', async () => {  const { host, svg, save }
   expect(saved.objects.find((o: VenueObject) => o.id === 'row-1').seats).toHaveLength(6);
 });
 
-it('mixed multi-select beda baris: hanya baris diedit, harga kategori tetap, 1 undo pulihkan', async () => {
+it('klik ganda + shift beda baris: hanya baris diedit, harga kategori tetap, 1 undo pulihkan', async () => {
   const { host, click, save, titled } = await mount();
-  // s1 (A) + s4 (B), harga sama-sama ngikut kategori
+  // klik ganda s1 = 1 kursi, lalu shift-klik s4 (B) = 2 kursi campuran
   await act(async () => { titled()[0].dispatchEvent(ptr('pointerdown', { clientX: 10, clientY: 10 })); });
+  await act(async () => { titled()[0].dispatchEvent(ptr('pointerdown', { clientX: 10, clientY: 10 })); });
+  expect(host.textContent).toContain('1 kursi terpilih');
   await act(async () => { titled()[3].dispatchEvent(ptr('pointerdown', { clientX: 12, clientY: 12, shiftKey: true })); });
   expect(host.textContent).toContain('2 kursi terpilih');
   expect(host.textContent).toContain('(campuran)');

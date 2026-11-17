@@ -86,6 +86,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
   const [vecBox, setVecBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [seatMarquee, setSeatMarquee] = useState<{ start: Pt; end: Pt } | null>(null);
   const seatGesture = useRef<{ start: Pt; clientX: number; clientY: number; pointerId: number; additive: boolean } | null>(null);
+  /** Tap terakhir di kursi (untuk bedakan klik tunggal vs ganda). */
+  const seatTap = useRef<{ id: string; t: number } | null>(null);
   const selVecRef = useRef<SVGGElement>(null);
   // Kamera: viewBox mengikuti aspek kontainer (tak ada letterbox). World = unit doc.
   const [vb, setVb] = useState<ViewBox>({ x: 0, y: 0, w: doc.width, h: doc.height });
@@ -696,8 +698,18 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
                       if (next.has(s.id)) next.delete(s.id);
                       else next.add(s.id);
                       selectSeats([...next]);
+                      seatTap.current = null;
                     } else {
-                      selectSeats([s.id]);
+                      // Klik tunggal = seluruh barisnya; klik ganda cepat = 1 kursi itu saja.
+                      const now = Date.now();
+                      const last = seatTap.current;
+                      if (last && last.id === s.id && now - last.t < 400) {
+                        seatTap.current = null;
+                        selectSeats([s.id]);
+                      } else {
+                        seatTap.current = { id: s.id, t: now };
+                        selectSeats(o.seats.map((x) => x.id));
+                      }
                     }
                     // cegah marquee mulai dari lingkaran kursi
                     seatGesture.current = null;
