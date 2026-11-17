@@ -719,7 +719,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
                 </circle>
                 );
               })}
-              {seatInteractive && o.seats.filter(s => s.id === hoverSeatId).map(s => (
+              {seatInteractive && o.seats.some((s) => s.id === hoverSeatId) && o.seats.map((s) => (
                 <circle key={`hover-${s.id}`} data-hover-seat={s.id} cx={s.x} cy={s.y} r={(s.radius ?? 8) * 1.25}
                   fill="rgba(245,158,11,0.18)" stroke="#f59e0b" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
               ))}
