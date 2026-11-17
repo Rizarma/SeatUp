@@ -816,7 +816,6 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       {selected && tool === 'select' && selected.id !== focusId
         && (selected.kind === 'stage' || selected.kind === 'section'
           || selected.kind === 'import-draft' || selected.kind === 'vector')
-        && selected.kind !== 'row-straight' && selected.kind !== 'row-arc'
         && visible.find((o) => o.id === selected.id) && (() => {
         const target = previewObj?.id === selected.id ? previewObj : selected;
         const active = rotateDrag && rotateDrag.id === selected.id ? rotateDrag : null;
