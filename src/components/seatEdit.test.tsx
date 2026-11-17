@@ -159,6 +159,19 @@ it('klik ganda + shift beda baris: hanya baris diedit, harga kategori tetap, 1 u
   expect(seatsUndone.find((s) => s.id === 's1')!.price).toBe(catVIP.price);
 });
 
+it('section container pasif di mode fokus: klik tak memilih section', async () => {
+  const { host, svg } = await mount();
+  await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', bubbles: true })); });
+  expect(host.textContent).toContain('Susunan kursi');
+  // Klik tepat pada shape section (bukan kursi): jangkar kanvas tak boleh memilihnya.
+  const poly = svg().querySelector('polygon')!;
+  const pt = { clientX: 700, clientY: 500 };
+  await act(async () => { poly.dispatchEvent(ptr('pointerdown', pt)); });
+  await act(async () => { poly.dispatchEvent(ptr('pointerup', pt)); });
+  expect(host.textContent).not.toContain('Hapus section');
+  expect(host.textContent).toContain('Susunan kursi');
+});
+
 it('tool seat disembunyikan di luar fokus', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });

@@ -572,8 +572,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
 
       {visible.map((o) => {
         const isSel = o.id === selectedId;
+        // Container section di mode fokus = workspace pasif: tak bisa diklik,
+        // tak bisa di-hover, tak ada gaya terpilih. Interaksi hanya isi di dalamnya.
+        const isFocusContainer = !!focusId && o.id === focusId;
         const objectHoverEvents = {
-          onPointerEnter: () => { if (tool === 'select' && !drag && !scaleDrag && !pan.current) setCanvasHoverId(o.id); },
+          onPointerEnter: () => { if (o.id === focusId) return; if (tool === 'select' && !drag && !scaleDrag && !pan.current) setCanvasHoverId(o.id); },
           onPointerLeave: () => setCanvasHoverId(null),
         };
         const sectionEvents = {
@@ -584,7 +587,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         };
         const selectDrag = {
           onPointerDown: (e: React.PointerEvent) => {
-            if (tool !== 'select' || e.button !== 0 || e.altKey) return;
+            if (tool !== 'select' || e.button !== 0 || e.altKey || o.id === focusId) return;
             e.stopPropagation();
             select(o.id);
             if (o.id === focusId) return;
@@ -610,7 +613,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           const stroke = secColor ?? (st ? st.color : 'none');
           const strokeWidth = secColor ? 2 / t.scale : st ? st.width : undefined;
           return (
-            <g key={o.id} {...sectionEvents} aria-label={o.label}>
+            <g key={o.id} {...(isFocusContainer ? {} : sectionEvents)} aria-label={o.label}>
               <g transform={rc ? `rotate(${rot} ${rc[0]} ${rc[1]})` : undefined}>
               <g
                 ref={isSel ? selVecRef : undefined}
@@ -629,10 +632,10 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
                   strokeDasharray={st?.dash}
                   strokeDashoffset={st?.dashOffset}
                   strokeOpacity={st?.opacity}
-                  {...selectDrag}
+                  {...(isFocusContainer ? {} : selectDrag)}
                   style={{ cursor: tool === 'select' ? 'move' : undefined }}
                 />
-                {isSel && (
+                {isSel && !isFocusContainer && (
                   <path d={o.d} fill="none" stroke="#2563eb" strokeWidth={2.5 / t.scale} pointerEvents="none" style={selStyle} />
                 )}
               </g>
@@ -738,9 +741,9 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         const prot = rotationOf(o);
         const prc = prot !== 0 ? shapeCenter(o) : null;
         return (
-          <g key={o.id} {...sectionEvents} aria-label={o.label}
+          <g key={o.id} {...(isFocusContainer ? {} : sectionEvents)} aria-label={o.label}
             transform={prc ? `rotate(${prot} ${prc[0]} ${prc[1]})` : undefined}>
-            <polygon vectorEffect="non-scaling-stroke" points={ptsStr(o.points)} fill={fill} fillOpacity={fillOpacity} stroke={stroke} strokeWidth={isSel ? 3 : 2} strokeDasharray={o.kind === 'import-draft' && !o.isSection ? '10 6' : undefined} {...selectDrag} style={selStyle} />
+            <polygon vectorEffect="non-scaling-stroke" points={ptsStr(o.points)} fill={fill} fillOpacity={fillOpacity} stroke={stroke} strokeWidth={isSel && !isFocusContainer ? 3 : 2} strokeDasharray={o.kind === 'import-draft' && !o.isSection ? '10 6' : undefined} {...(isFocusContainer ? {} : selectDrag)} style={isFocusContainer ? undefined : selStyle} />
           </g>
         );
       })}
@@ -749,6 +752,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         const effectiveHoverId = tool === 'select' ? canvasHoverId ?? hoveredObjectId : hoveredObjectId;
         const hovered = visible.find(o => o.id === effectiveHoverId);
         if (!hovered) return null;
+        // Container section di mode fokus = workspace pasif, jangan di-highlight.
+        if (hovered.id === focusId) return null;
         // Jangan pernah munculkan kursi tersembunyi venue lewat highlight panel.
         if (!focusId && (hovered.kind === 'row-straight' || hovered.kind === 'row-arc')) return null;
         const style = { stroke: '#f59e0b', strokeWidth: 3, vectorEffect: 'non-scaling-stroke' as const };
