@@ -207,11 +207,43 @@ button:focus-visible, .btn:focus-visible, .panel details > summary:focus-visible
 /* Field seragam: label kiri 88px + kontrol penuh, tanpa overflow horizontal */
 .fld { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12.5px; margin: 0 0 8px; min-width: 0; }
 .fld > span { color: var(--muted); font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
-.fld input, .fld select { font: inherit; font-size: 13px; height: 34px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; width: 100%; max-width: 100%; min-width: 0; background: #fff; color: var(--text); }
+.fld input, .fld select { font: inherit; font-size: 13px; height: 34px; border: 1px solid var(--border); border-radius: 8px; width: 100%; max-width: 100%; min-width: 0; background: #fff; color: var(--text); }
+.fld input { padding: 0 8px; }
+.fld select {
+  padding: 0 30px 0 8px;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px 14px;
+}
+.fld select:disabled { cursor: default; opacity: 0.6; }
 .fld.search { grid-template-columns: 88px minmax(0, 1fr); }
 .empty { padding: 16px 4px; text-align: left; }
 .empty strong { display: block; font-size: 14px; margin: 8px 0 4px; }
 .empty .muted { overflow-wrap: anywhere; }
+/* Empty state tab Properti: kartu dashed terpusat agar tidak terlihat kosong. */
+.empty--props {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; gap: 0;
+  margin-top: 4px; padding: 28px 20px;
+  background: var(--bg);
+  border: 1px dashed var(--border); border-radius: 12px;
+}
+.empty--props .empty-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: grid; place-items: center;
+  background: #fff; border: 1px solid var(--border); color: var(--accent);
+}
+.empty--props strong { margin: 12px 0 0; font-size: 14px; }
+.empty--props .muted { margin: 6px 0 0; line-height: 1.55; max-width: 240px; }
+.empty--props .empty-action {
+  margin-top: 14px; min-height: 36px; font-weight: 600;
+  color: var(--accent); border-color: var(--border); background: #fff;
+}
+.empty--props .empty-action:hover { border-color: var(--accent); }
 /* Grup objek: header polos + baris list tanpa kartu */
 .ogrp { border: 0; border-radius: 0; margin: 0 0 4px; }
 .ogrp + .ogrp { border-top: 1px solid var(--border); padding-top: 8px; }
@@ -310,9 +342,8 @@ label.nbtn { cursor: pointer; }
 .pnote { flex-shrink: 0; padding: 10px 16px; border-top: 1px solid var(--border); background: #fff; }
 .pnote .warn { color: #b91c1c; display: flex; gap: 6px; align-items: flex-start; overflow-wrap: anywhere; }
 .chk { display: flex; gap: 8px; align-items: center; font-size: 12.5px; margin: 6px 0; min-height: 32px; min-width: 0; overflow-wrap: anywhere; }
-/* List objek: baris + ikon hapus sejajar, label panjang wrap tanpa dorong horizontal */
+/* List objek: label panjang wrap tanpa dorong horizontal */
 .objlist li { min-width: 0; }
-.objlist li > .object-delete { flex-shrink: 0; }
 /* Dokumen: upload dan aksi wrap rapi di 2 kolom sempit */
 .docgrid { min-width: 0; }
 .docgrid .btn, .btn.filepick { min-width: 0; overflow-wrap: anywhere; text-align: center; }
@@ -470,8 +501,25 @@ label.btn.filepick input { max-width: 100%; }
 
 .objlist li { display:flex; align-items:center; gap:4px; min-width:0; }
 .objlist li > button:first-child { flex:1; min-width:0; overflow-wrap:anywhere; }
-.objlist li > .object-delete { flex:0 0 40px; width:40px; height:40px; padding:0; display:grid; place-items:center; color:var(--muted); }
-.objlist li > .object-delete:hover, .objlist li > .object-delete:focus-visible { color:#b91c1c; background:#fef2f2; }
+/* Danger zone di bottom tab Objek: jauh dari daftar agar tak kepencet. */
+.obj-danger-zone {
+  margin-top: 16px; padding: 12px;
+  border: 1px solid #fecaca; background: #fef2f2; border-radius: 12px;
+}
+.obj-danger-zone .muted { margin: 0 0 10px; line-height: 1.5; }
+.obj-danger-zone .muted strong { color: var(--text); }
+.obj-danger-zone .danger-full {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; min-height: 40px; font-weight: 600; background: #fff;
+}
+.obj-danger-hint { margin: 16px 0 0; }
+/* Tombol Hapus di modal konfirmasi: solid merah. */
+.modal-card .danger-solid {
+  background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 600;
+}
+.modal-card .danger-solid:hover { border-color: #991b1b; background: #b91c1c; }
+.modal-danger p.muted { line-height: 1.55; }
+.modal-danger p.muted strong { color: var(--text); }
 
 /* Draw section hover/focus on its actual path, never the SVG group's bounding box. */
 .orion-map .preview-section:focus { outline:none; }
