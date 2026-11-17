@@ -136,22 +136,27 @@ export default function SidePanel(p: Props) {
       <div className="pbody" role="tabpanel">
         {tab === 'props' && (
           <>
-            {selectedSeatIds.length > 0 && <SeatSelectionEditor key={selectedSeatIds.join(',')} />}
-            {tool !== 'select' && tool !== 'seat' && <ToolOptions p={p} f={f} tool={tool} />}
-            {tool === 'seat' && selectedSeatIds.length === 0 && <ToolOptions p={p} f={f} tool={tool} />}
-            {tool === 'seat' && selectedSeatIds.length === 0 && p.sections.length === 1 && p.sections[0].isSection && (
-              <section aria-label="Warna section aktif">
-                <SectionColorEditor selected={p.sections[0]} />
-              </section>
-            )}
-            {tool === 'select' && selected && <ObjectProps p={p} selected={selected} markOk={mark.ok} markReason={mark.reason} />}
-            {p.focusId && <FocusSectionLayout focusId={p.focusId} onEnterSection={p.onEnterSection} />}
-            {(tool === 'select' || tool === 'seat') && !selected && selectedSeatIds.length === 0 && (
-              <div className="empty">
-                <Layers size={20} strokeWidth={2} aria-hidden="true" />
-                <strong>Belum ada yang dipilih</strong>
-                <p className="muted">Pilih objek di kanvas atau dari tab Objek untuk melihat propertinya. Pilih tool menggambar untuk opsi pembuatan.</p>
-              </div>
+            {selectedSeatIds.length > 0 ? (
+              <SeatSelectionEditor key={selectedSeatIds.join(',')} />
+            ) : (
+              <>
+                {tool !== 'select' && tool !== 'seat' && <ToolOptions p={p} f={f} tool={tool} />}
+                {tool === 'seat' && <ToolOptions p={p} f={f} tool={tool} />}
+                {tool === 'seat' && p.sections.length === 1 && p.sections[0].isSection && (
+                  <section aria-label="Warna section aktif">
+                    <SectionColorEditor selected={p.sections[0]} />
+                  </section>
+                )}
+                {tool === 'select' && selected && <ObjectProps p={p} selected={selected} markOk={mark.ok} markReason={mark.reason} />}
+                {tool === 'select' && !selected && !p.focusId && (
+                  <div className="empty">
+                    <Layers size={20} strokeWidth={2} aria-hidden="true" />
+                    <strong>Belum ada yang dipilih</strong>
+                    <p className="muted">Pilih objek di kanvas atau dari tab Objek untuk melihat propertinya. Pilih tool menggambar untuk opsi pembuatan.</p>
+                  </div>
+                )}
+                {p.focusId && tool !== 'row' && <FocusSectionLayout focusId={p.focusId} onEnterSection={p.onEnterSection} />}
+              </>
             )}
           </>
         )}
@@ -176,7 +181,7 @@ export default function SidePanel(p: Props) {
                       <li key={s.id} onPointerEnter={() => p.onHoverObject(s.id)} onPointerLeave={() => p.onHoverObject(null)} onFocus={() => p.onHoverObject(s.id)} onBlur={() => p.onHoverObject(null)}>
                         <button className={s.id === selectedId ? 'on' : ''} onClick={() => { p.setSectionId(s.id); pickObject(s.id); }}>
                           <i aria-hidden="true" style={{ background: dot, width: 12, height: 12, borderRadius: '50%', flexShrink: 0, display: 'inline-block' }} />
-                          § {s.label} · {n.length} kursi{bad > 0 ? ` · ${bad} invalid` : ''}
+                          {s.label} · {n.length} kursi{bad > 0 ? ` · ${bad} invalid` : ''}
                         </button>
                         {deleteButton(s)}
                       </li>
@@ -189,7 +194,7 @@ export default function SidePanel(p: Props) {
                 {groupRows.map((o) => (
                   <li key={o.id} onPointerEnter={() => p.onHoverObject(o.id)} onPointerLeave={() => p.onHoverObject(null)} onFocus={() => p.onHoverObject(o.id)} onBlur={() => p.onHoverObject(null)}>
                     <button className={o.id === selectedId ? 'on' : ''} onClick={() => pickObject(o.id)}>
-                      {o.label} · {o.seats.length} kursi{o.seats.some((s) => s.invalid) ? ` (${o.seats.filter((s) => s.invalid).length} invalid)` : ''}{p.focusId ? (o.sectionId === p.focusId || o.seats.some((s) => s.sectionId === p.focusId) ? ' · di section ini' : ` · § ${doc.objects.find((s) => s.id === o.sectionId)?.label ?? 'lain'}`) : ''}
+                      {o.label} · {o.seats.length} kursi{o.seats.some((s) => s.invalid) ? ` (${o.seats.filter((s) => s.invalid).length} invalid)` : ''}{p.focusId ? (o.sectionId === p.focusId || o.seats.some((s) => s.sectionId === p.focusId) ? ' · di section ini' : ` · ${doc.objects.find((s) => s.id === o.sectionId)?.label ?? 'lain'}`) : ''}
                     </button>
                     {deleteButton(o)}
                   </li>
@@ -201,7 +206,7 @@ export default function SidePanel(p: Props) {
                 {groupOther.map((o) => (
                   <li key={o.id} onPointerEnter={() => p.onHoverObject(o.id)} onPointerLeave={() => p.onHoverObject(null)} onFocus={() => p.onHoverObject(o.id)} onBlur={() => p.onHoverObject(null)}>
                     <button className={o.id === selectedId ? 'on' : ''} onClick={() => pickObject(o.id)}>
-                      {o.isSection ? '§ ' : o.kind === 'import-draft' ? `draf:${o.guess ?? '?'}` : `${shapeName(o)}`} · {o.label}
+                      {o.kind === 'import-draft' ? `draf:${o.guess ?? '?'}` : `${shapeName(o)}`} · {o.label}
                     </button>
                     {deleteButton(o)}
                   </li>
@@ -295,26 +300,17 @@ export default function SidePanel(p: Props) {
 function ToolOptions({ p, f, tool }: { p: Props; f: RowForm; tool: string }) {
   if (tool === 'hand') return <CtxHead icon={Hand} title="Geser kanvas" sub="Seret di mana saja untuk menggeser tampilan. Scroll untuk zoom." />;
   if (tool === 'seat') {
-    return (
-      <>
-        <CtxHead icon={Armchair} title="Pilih kursi" sub="Klik = pilih 1 · Shift/Cmd/Ctrl+klik = multi · seret = marquee" />
-        <p className="muted">Hanya aktif di dalam section fokus. Delete/Backspace menghapus kursi terpilih saja (bukan kelompoknya). Detail dan edit ada di bawah daftar ini setelah memilih.</p>
-      </>
-    );
+    return <CtxHead icon={Armchair} title="Pilih kursi" sub="Klik pilih · Shift/Cmd/Ctrl multi · seret marquee" />;
   }
   if (tool === 'row') {
     const targetLabel = p.focusId
       ? p.sections.find((s) => s.id === p.focusId)?.label ?? p.sections[0]?.label ?? null
       : p.sectionId ? p.sections.find((s) => s.id === p.sectionId)?.label ?? null : null;
+    const hasTarget = !!(p.focusId ?? p.sectionId);
     return (
       <>
-        <CtxHead icon={Armchair} title="Buat baris kursi" sub={targetLabel ? `Target: § ${targetLabel}` : 'Masuk ke section dulu'} />
-        <p className="muted">{f.mode === 'straight'
-          ? 'Seret untuk membuat blok lurus (kanan/kiri = kolom, atas/bawah = baris). Lepaskan untuk membuat. Esc batal.'
-          : 'Mode busur: klik kanvas untuk jangkar pusat busur, lalu Buat. Catatan: seret-drag selalu membuat baris lurus.'}</p>
-        {p.focusId ? (
-          <p className="muted">Target: § {targetLabel} (section fokus). Ganti target via Kembali ke venue → klik dua kali section lain.</p>
-        ) : (
+        <CtxHead icon={Armchair} title="Buat baris kursi" sub={hasTarget && targetLabel ? targetLabel : 'Masuk ke section dulu'} />
+        {!hasTarget && (
           <p className="muted">Masuk ke section dulu (klik dua kali section di kanvas) — baris hanya bisa dibuat di dalam section fokus.</p>
         )}
         <label className="fld"><span>Mode</span>
@@ -334,7 +330,7 @@ function ToolOptions({ p, f, tool }: { p: Props; f: RowForm; tool: string }) {
         {f.mode === 'arc' && <Num label="Sudut awal (°)" value={f.startDeg} onChange={(v) => p.setRowForm({ ...f, startDeg: v })} min={-180} max={360} />}
         <Num label="Offset label" value={f.rowLabelOffset} onChange={(v) => p.setRowForm({ ...f, rowLabelOffset: v })} min={0} max={25} />
         <Num label="Harga (Rp)" value={f.price} onChange={(v) => p.setRowForm({ ...f, price: v })} min={0} step={5000} />
-        <p className="muted">{p.anchor ? `Jangkar: ${p.anchor[0]}, ${p.anchor[1]}.` : 'Klik kanvas untuk jangkar (awal baris / pusat busur).'}</p>
+        {p.anchor && <p className="muted">Jangkar: {p.anchor[0]}, {p.anchor[1]}.</p>}
         {p.validCount !== null && (p.focusId ?? p.sectionId) && (
           <p className="muted">{p.validCount} kandidat valid (footprint penuh di dalam) · {p.rejectedCount} ditolak (keluar/lubang/lorong).</p>
         )}
@@ -455,34 +451,37 @@ function SeatSelectionEditorInner({ entries }: {
   };
 
   return (
-    <section aria-label="Kursi terpilih">
+    <div className="object-properties seat-selection" aria-label="Kursi terpilih">
       <CtxHead icon={Armchair} title={`${entries.length} kursi terpilih`} sub={`${mixed ? 'Nilai campuran — isi field untuk ubah semua' : 'Ubah baris, nomor, atau harga kursi yang dipilih'}${invalidN > 0 ? ` · ${invalidN} invalid` : ''}`} />
-      <label className="fld"><span>Baris{commonRow == null ? ' (campuran)' : ''}</span>
-        <input aria-label="Baris kursi terpilih" value={rowDraft} placeholder={commonRow == null ? 'Campuran — isi untuk ubah semua' : undefined}
-          onChange={(e) => { setRowDraft(e.target.value); setMsg(''); }} />
-      </label>
-      <label className="fld"><span>Nomor{commonNum == null ? ' (campuran)' : ''}</span>
-        <input aria-label="Nomor kursi terpilih" value={numDraft} placeholder={commonNum == null ? 'Campuran — isi untuk ubah semua' : undefined}
-          onChange={(e) => { setNumDraft(e.target.value); setMsg(''); }} />
-      </label>
-      <label className="fld"><span>Harga (Rp){commonPrice == null ? ' (campuran)' : ''}</span>
-        <input aria-label="Harga kursi terpilih" type="number" min={0} step={5000} value={priceDraft}
-          placeholder={commonPrice == null ? 'Campuran' : undefined}
-          onChange={(e) => { setPriceDraft(e.target.value); setMsg(''); }} />
-      </label>
-      <div className="row">
-        <button onClick={apply}>Terapkan ke {entries.length} kursi</button>
-        <button className="danger" onClick={remove} aria-label={`Hapus ${entries.length} kursi terpilih`}>
-          Hapus {entries.length} kursi
-        </button>
-        <button onClick={() => selectSeats([])}>Batal pilih</button>
+      <div className="object-config-group">
+        <label className="fld"><span>Baris{commonRow == null ? ' (campuran)' : ''}</span>
+          <input aria-label="Baris kursi terpilih" value={rowDraft} placeholder={commonRow == null ? 'Campuran — isi untuk ubah semua' : undefined}
+            onChange={(e) => { setRowDraft(e.target.value); setMsg(''); }} />
+        </label>
+        <label className="fld"><span>Nomor{commonNum == null ? ' (campuran)' : ''}</span>
+          <input aria-label="Nomor kursi terpilih" value={numDraft} placeholder={commonNum == null ? 'Campuran — isi untuk ubah semua' : undefined}
+            onChange={(e) => { setNumDraft(e.target.value); setMsg(''); }} />
+        </label>
+        <label className="fld"><span>Harga (Rp){commonPrice == null ? ' (campuran)' : ''}</span>
+          <input aria-label="Harga kursi terpilih" type="number" min={0} step={5000} value={priceDraft}
+            placeholder={commonPrice == null ? 'Campuran' : undefined}
+            onChange={(e) => { setPriceDraft(e.target.value); setMsg(''); }} />
+        </label>
       </div>
-      {msg && <p className="muted" role="status">{msg}</p>}
-      <p className="muted">Satu kali Terapkan = satu langkah undo. Hapus hanya menghapus kursi yang dipilih.</p>
-      {entries.length <= 8 && (
-        <ul className="muted">{entries.map((e) => <li key={e.seat.id}>{e.seat.row}{e.seat.number} · Rp{Number(e.seat.price).toLocaleString('id-ID')}</li>)}</ul>
-      )}
-    </section>
+      <div className="object-config-group seat-actions">
+        <button className="apply-primary" onClick={apply}>Terapkan ke {entries.length} kursi</button>
+        <div className="row">
+          <button className="danger" onClick={remove} aria-label={`Hapus ${entries.length} kursi terpilih`}>
+            Hapus {entries.length} kursi
+          </button>
+          <button onClick={() => selectSeats([])}>Batal pilih</button>
+        </div>
+        {msg && <p className="muted" role="status">{msg}</p>}
+        {entries.length <= 8 && (
+          <ul className="muted seat-mini">{entries.map((e) => <li key={e.seat.id}>{e.seat.row}{e.seat.number} · Rp{Number(e.seat.price).toLocaleString('id-ID')}</li>)}</ul>
+        )}
+      </div>
+    </div>
   );
 }
 

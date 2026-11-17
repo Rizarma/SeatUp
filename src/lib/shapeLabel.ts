@@ -5,7 +5,7 @@ export type ShapeName = 'Polygon' | 'Kotak' | 'Lingkaran' | 'Bentuk';
 /**
  * Nama jenis bentuk untuk UI. Terpisah dari `kind` internal (tetap
  * 'section'/'vector' agar dokumen lama kompatibel) dan dari status
- * section (`isSection`, ditampilkan via badge § terpisah).
+ * section (`isSection`, ditampilkan via badge terpisah).
  */
 export function shapeName(o: Pick<VenueObject, 'kind' | 'label'> & { shape?: string | null }): ShapeName {
   if (o.kind === 'section') return 'Polygon';

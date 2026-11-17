@@ -35,7 +35,7 @@ const TOOLS: { id: Tool; label: string; hint: string; Icon: LucideIcon }[] = [
 ];
 
 const DEFAULT_ROWFORM: RowForm = {
-  mode: 'arc', rows: 3, seatsPerRow: 12, seatGap: 26, rowGap: 34,
+  mode: 'straight', rows: 3, seatsPerRow: 12, seatGap: 26, rowGap: 34,
   angleDeg: 0, radius: 230, spanDeg: 140, startDeg: 20, rowLabelOffset: 0, price: 150000,
 };
 
@@ -258,9 +258,9 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
           aria-label="Buka tutup panel samping" data-tip="Panel samping" onClick={() => setPanelOpen((v) => !v)}>
           <PanelRight size={20} strokeWidth={2} aria-hidden="true" />
         </button>
-        {(focusedSection || selectedObj?.isSection) && (
+        {focusedSection && (
         <div className="section-navigation">
-          {focusedSection ? <>
+          <>
             <button onClick={leaveSection}><ArrowLeft size={16} /> Kembali ke venue</button>
             <strong>{focusedSection.label}</strong>
             <span>{doc.objects.flatMap(o => o.seats).filter(s => s.sectionId === activeFocusId).length} kursi</span>
@@ -280,9 +280,7 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
               }}>Hapus {selectedSeatIds.length} kursi</button>
               <button onClick={() => selectSeats([])}>Batal pilih</button>
             </>}
-          </> : <>
-            {selectedObj?.isSection && <button onClick={() => enterSection(selectedObj.id)}>Edit isi section</button>}
-          </>}
+          </>
         </div>
         )}
         {rowDrag && dragLayout && <div className="seat-drag-summary" role="status">

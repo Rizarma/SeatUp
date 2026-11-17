@@ -32,7 +32,6 @@ export default function SeatLayoutControls({ target }: { target: VenueObject }) 
     <label className="fld"><span>Pengaturan</span><select value={mode} onChange={e => { setMode(e.target.value); setMessage(''); }}><option value="manual">Manual</option><option value="fit">Fit to shape</option></select></label>
     {mode === 'manual' ? <>
       {fields.map(([key,label,min,max]) => <label className="fld" key={key}><span>{label}</span><input type="number" min={min} max={max} value={transform[key]} onChange={e => setTransform({ ...transform, [key]:Number(e.target.value) })} /></label>)}
-      <p className="muted">Skala dan skew lalu rotasi dari pusat susunan, terakhir geser. Ukuran lingkaran kursi tetap. Kursi keluar batas ditandai merah.</p>
     </> : <>
       <label className="fld"><span>Jarak minimum (px)</span><input type="number" min={seatRadius * 2} step="any" value={gap} onChange={e => setGap(Number(e.target.value))} /></label>
       <label className="fld"><span>Margin batas (px)</span><input type="number" min={0} step="any" value={margin} onChange={e => setMargin(Number(e.target.value))} /></label>
