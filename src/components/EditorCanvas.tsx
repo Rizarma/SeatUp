@@ -619,7 +619,27 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           const seatInteractive = !!focusId && tool === 'seat';
           return (
             <g key={o.id} {...objectHoverEvents} {...(seatInteractive ? {} : selectDrag)} aria-label={`${o.label} (${o.seats.length} kursi)`}>
-              {o.points[0] && <circle cx={o.points[0][0]} cy={o.points[0][1]} r={o.seats[0]?.radius ?? 8} fill="none" stroke={isSel ? '#2563eb' : '#64748b'} strokeWidth={(o.seats[0]?.radius ?? 8) / 4} strokeDasharray="4 3" />}
+              {(() => {
+                const hoveredId = tool === 'select' ? (canvasHoverId ?? hoveredObjectId) : hoveredObjectId;
+                const hovered = hoveredId === o.id || (hoverSeatId != null && o.seats.some((s) => s.id === hoverSeatId));
+                if (!hovered) return null;
+                const first = o.seats[0];
+                if (!first) return null;
+                const r = first.radius ?? 8;
+                const gap = r * 1.5;
+                const cx = first.x - gap;
+                const cy = first.y - gap;
+                const arm = r * 0.45;
+                const col = isSel ? '#2563eb' : '#64748b';
+                return (
+                  <g key={`anchor-${o.id}`} pointerEvents="none" aria-hidden="true">
+                    <title>Jangkar baris</title>
+                    <line x1={cx - arm} y1={cy} x2={cx + arm} y2={cy} stroke={col} strokeWidth={1.5} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                    <line x1={cx} y1={cy - arm} x2={cx} y2={cy + arm} stroke={col} strokeWidth={1.5} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                    <circle cx={cx} cy={cy} r={r * 0.14} fill={col} />
+                  </g>
+                );
+              })()}
               {o.seats.map((s) => {
                 const secId = s.sectionId ?? o.sectionId ?? focusId ?? '';
                 const fill = s.invalid ? '#dc2626' : sectionColor(secId);
