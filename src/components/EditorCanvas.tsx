@@ -5,7 +5,7 @@ import { uid } from '../lib/venue';
 import { fitViewBox, toWorld, viewBoxStr } from '../lib/camera';
 import type { ViewBox } from '../lib/camera';
 import { resolvedPoints, sectionGeomFor, shapeCenter, vectorCanvasCenter } from '../lib/contain';
-import { sectionColorById } from '../lib/sectionColor';
+import { categoryColorForSection } from '../lib/categories';
 import { bboxOf, normalizeAngle, rotatePoints, rotateShapeBy, rotationOf, toPointsString, translatePoints } from '../lib/geometry';
 import { useStore } from '../store';
 
@@ -89,7 +89,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
   const previousFocus = useRef<string | null>(null);
   const pan = useRef<{ x: number; y: number; vb: ViewBox } | null>(null);
   const focused = doc.objects.find(o => o.id === focusId);
-  const sectionColor = (id: string): string => sectionColorById(doc.objects, id);
+  const sectionColor = (id: string): string => categoryColorForSection(doc.objects, doc.categories, id);
   const focusGeom = useMemo(() => focused ? sectionGeomFor(focused) : null, [focused]);
   const fit = useCallback(() => {
     const el = svgRef.current;

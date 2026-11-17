@@ -15,6 +15,7 @@ import { validateVenueDoc, parseVenueJson } from './lib/validate';
 import { markEligibility } from './lib/panelContext';
 import { saveLocal, loadLocal, downloadJson, readTextFile, readImageFile } from './lib/storage';
 import { saveBackground, loadBackground, clearBackground, hasBackgroundFlag, dataUrlToBlob } from './lib/bgImage';
+import { categoryPriceForSection } from './lib/categories';
 import { StoreProvider, useStore } from './store';
 import type { Tool } from './store';
 import EditorCanvas from './components/EditorCanvas';
@@ -36,7 +37,7 @@ const TOOLS: { id: Tool; label: string; hint: string; Icon: LucideIcon }[] = [
 
 const DEFAULT_ROWFORM: RowForm = {
   mode: 'straight', rows: 3, seatsPerRow: 12, seatGap: 26, rowGap: 34,
-  angleDeg: 0, radius: 230, spanDeg: 140, startDeg: 20, rowLabelOffset: 0, price: 150000,
+  angleDeg: 0, radius: 230, spanDeg: 140, startDeg: 20, rowLabelOffset: 0,
 };
 
 function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
@@ -102,6 +103,8 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
     const ok = classifySeats(candidates, effGeom, 8 * placementScale);
     const kept = candidates.filter((_, i) => ok[i]);
     if (kept.length === 0) return;
+    // Harga selalu ngikut kategori section aktif (sumber tunggal di tab Kategori).
+    const catPrice = categoryPriceForSection(doc.objects, doc.categories, effSection.id);
     const obj: VenueObject = {
       id: uid('obj'),
       kind: params.mode === 'arc' ? 'row-arc' : 'row-straight',
@@ -109,11 +112,11 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
       points: [origin],
       closed: false,
       width: 28,
-      price: rowForm.price,
+      price: catPrice,
       rowParams: params,
       seats: kept.map((s, i) => ({
         id: `${uid('seat')}-${i}`, row: s.row, number: s.number, x: s.x, y: s.y, radius: 8 * placementScale,
-        status: 'available' as const, price: rowForm.price, sectionId: effSection.id, invalid: false,
+        status: 'available' as const, price: catPrice, sectionId: effSection.id, invalid: false,
       })),
       source: { origin: 'canvas', confidence: 1 },
       guess: null,
@@ -318,7 +321,12 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
         onMarkSection={() => {
           if (!selectedObj) return;
           if (!markEligibility(selectedObj).ok) return;
-          update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === selectedObj.id ? { ...o, isSection: true } : o)) }));
+          update((d) => ({
+            ...d,
+            objects: d.objects.map((o) => (o.id === selectedObj.id
+              ? { ...o, isSection: true, categoryId: o.categoryId ?? d.categories[0]?.id ?? null }
+              : o)),
+          }));
         }}
         onUnmarkSection={() => {
           if (!selectedObj) return;

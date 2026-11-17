@@ -6,45 +6,43 @@ import App from '../App';
 import { emptyVenue } from '../lib/venue';
 import type { VenueObject, VenueDoc } from '../lib/venue';
 import { validateVenueDoc, parseVenueJson } from '../lib/validate';
-import { SECTION_PALETTE, sectionColorFor } from '../lib/sectionColor';
+import { SECTION_PALETTE } from '../lib/sectionColor';
 
-const sectionA: VenueObject = {
-  id: 'section-a', kind: 'section', label: 'Section A', points: [[0, 0], [500, 0], [500, 400], [0, 400]],
-  closed: true, isSection: true, color: '#e11d48', width: 28, price: 0, rowParams: null, seats: [],
-  source: { origin: 'canvas', confidence: 1 }, guess: null,
-};
-const sectionB: VenueObject = {
-  id: 'section-b', kind: 'section', label: 'Section B', points: [[600, 0], [1100, 0], [1100, 400], [600, 400]],
-  closed: true, isSection: true, width: 28, price: 0, rowParams: null, seats: [],
-  source: { origin: 'canvas', confidence: 1 }, guess: null,
-};
-const stage: VenueObject = {
-  id: 'stage-1', kind: 'stage', label: 'Panggung', points: [[400, 450], [800, 450], [800, 520], [400, 520]],
-  closed: true, width: 28, price: 0, rowParams: null, seats: [],
-  source: { origin: 'canvas', confidence: 1 }, guess: null,
-};
-
-function bigSeats(n: number, sectionId: string, x0: number, y0: number, price: number) {
-  return Array.from({ length: n }, (_, i) => ({
+function fixtureDoc(): VenueDoc {
+  const base = emptyVenue();
+  const catA = { ...base.categories[0], name: 'VIP', price: 150000, color: '#e11d48' };
+  const catB = { ...base.categories[1], name: 'Reguler', price: 100000, color: SECTION_PALETTE[1] };
+  const sectionA: VenueObject = {
+    id: 'section-a', kind: 'section', label: 'Section A', points: [[0, 0], [500, 0], [500, 400], [0, 400]],
+    closed: true, isSection: true, color: catA.color, categoryId: catA.id, width: 28, price: 0, rowParams: null, seats: [],
+    source: { origin: 'canvas', confidence: 1 }, guess: null,
+  };
+  const sectionB: VenueObject = {
+    id: 'section-b', kind: 'section', label: 'Section B', points: [[600, 0], [1100, 0], [1100, 400], [600, 400]],
+    closed: true, isSection: true, color: catB.color, categoryId: catB.id, width: 28, price: 0, rowParams: null, seats: [],
+    source: { origin: 'canvas', confidence: 1 }, guess: null,
+  };
+  const stage: VenueObject = {
+    id: 'stage-1', kind: 'stage', label: 'Panggung', points: [[400, 450], [800, 450], [800, 520], [400, 520]],
+    closed: true, width: 28, price: 0, rowParams: null, seats: [],
+    source: { origin: 'canvas', confidence: 1 }, guess: null,
+  };
+  const bigSeats = (n: number, sectionId: string, x0: number, y0: number, price: number) => Array.from({ length: n }, (_, i) => ({
     id: `seat-${sectionId}-${i}`, row: 'A', number: String(i + 1),
     x: x0 + (i % 50) * 8, y: y0 + Math.floor(i / 50) * 10,
     status: 'available' as const, price, sectionId, radius: 3, invalid: false,
   }));
-}
-
-function fixtureDoc(): VenueDoc {
-  const base = emptyVenue();
   const rowA: VenueObject = {
     id: 'row-a', kind: 'row-straight', label: 'Baris A', points: [[10, 10]], closed: false,
-    width: 28, price: 150000, rowParams: null, seats: bigSeats(1000, 'section-a', 10, 10, 150000),
+    width: 28, price: catA.price, rowParams: null, seats: bigSeats(1000, 'section-a', 10, 10, catA.price),
     source: { origin: 'canvas', confidence: 1 }, guess: null, sectionId: 'section-a',
   };
   const rowB: VenueObject = {
     id: 'row-b', kind: 'row-straight', label: 'Baris B', points: [[610, 10]], closed: false,
-    width: 28, price: 100000, rowParams: null, seats: bigSeats(6, 'section-b', 610, 10, 100000),
+    width: 28, price: catB.price, rowParams: null, seats: bigSeats(6, 'section-b', 610, 10, catB.price),
     source: { origin: 'canvas', confidence: 1 }, guess: null, sectionId: 'section-b',
   };
-  return { ...base, objects: [sectionA, sectionB, stage, rowA, rowB] };
+  return { ...base, categories: [catA, catB], objects: [sectionA, sectionB, stage, rowA, rowB] };
 }
 
 let cleanup = () => {};
@@ -83,7 +81,7 @@ it('editor venue: nol node kursi dengan 1006 kursi; masuk hanya section aktif; k
   expect(svg().getAttribute('aria-label')).toBe('Editor isi section');
   expect(seatTitles()).toHaveLength(1000);
   expect(host.textContent).toContain('1000 kursi');
-  // Warna section dipakai kursi: A = warna tersimpan, cek satu sampel.
+  // Warna kategori dipakai kursi: A = warna kategori VIP (#e11d48), cek satu sampel.
   const fillsA = new Set(seatTitles().slice(0, 20).map((c) => c.getAttribute('fill')));
   expect(fillsA).toEqual(new Set(['#e11d48']));
   // Kembali: unmount semua kursi.
@@ -108,7 +106,7 @@ it('preview venue: nol tombol kursi; masuk section aktif saja; pilihan buyer ber
   expect(map().getAttribute('aria-label')).toBe('Denah section Section A');
   const seatsA = map().querySelectorAll('circle[role="button"]');
   expect(seatsA).toHaveLength(1000);
-  // Warna section A dipakai kursi preview.
+  // Warna kategori A dipakai kursi preview.
   expect((seatsA[0] as SVGCircleElement).getAttribute('fill')).toBe('#e11d48');
   // Pilih 1 kursi, lalu kembali ke venue: tombol kursi unmount tapi summary bertahan.
   await act(async () => { seatsA[0].dispatchEvent(new MouseEvent('click', { bubbles: true })); });
@@ -126,10 +124,8 @@ it('preview venue: nol tombol kursi; masuk section aktif saja; pilihan buyer ber
   expect(host.textContent).toContain('Section A');
 });
 
-it('warna section konsisten editor+preview+legenda; save/load/undo; fallback dokumen lama', async () => {
+it('kategori: ubah harga/warna propagasi ke kursi; validasi; legenda kategori', async () => {
   const { host, svg, click, save } = await mountEditor();
-  // Fallback deterministik: section B tanpa warna -> palet indeks 1.
-  expect(sectionColorFor(null, 1)).toBe(SECTION_PALETTE[1]);
   await act(async () => { svg().querySelectorAll('polygon')[1].dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); });
   const fillsB = new Set(
     [...svg().querySelectorAll('title')].map((t) => t.parentElement!)
@@ -137,51 +133,60 @@ it('warna section konsisten editor+preview+legenda; save/load/undo; fallback dok
       .slice(0, 6).map((c) => c.getAttribute('fill')),
   );
   expect(fillsB).toEqual(new Set([SECTION_PALETTE[1]]));
-  // Ubah warna section B via color picker panel.
-  const colorInput = host.querySelector('[aria-label="Warna section"]') as HTMLInputElement;
-  expect(colorInput).not.toBeNull();
+  // Ubah harga kategori Reguler via tab Kategori (input harga pertama = VIP, kedua = Reguler).
+  // Buka tab Kategori (tab pertama) lalu edit kategori kedua.
+  const catTab = [...host.querySelectorAll('[role="tab"]')].find((b) => b.textContent === 'Kategori') as HTMLButtonElement;
+  await act(async () => catTab.click());
+  const editBtns = host.querySelectorAll('.category-panel .objlist li button[aria-label^="Ubah"]');
+  expect(editBtns.length).toBe(2);
+  await act(async () => (editBtns[1] as HTMLButtonElement).click());
+  const priceInput = host.querySelector('.category-panel [aria-label="Harga kategori Reguler"]') as HTMLInputElement;
   const nativeSet = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
   await act(async () => {
-    nativeSet.call(colorInput, '#0000ff');
-    colorInput.dispatchEvent(new Event('input', { bubbles: true }));
+    nativeSet.call(priceInput, '125000');
+    priceInput.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  const saveBtn = [...host.querySelectorAll('.category-panel button')].find((b) => b.textContent === 'Simpan') as HTMLButtonElement;
+  await act(async () => saveBtn.click());
   let saved = await save();
-  expect(saved.objects.find((o: VenueObject) => o.id === 'section-b').color).toBe('#0000ff');
-  // Undo kembalikan (tak berwarna -> fallback), lalu preview pakai fallback.
+  expect(saved.categories.find((c: { name: string }) => c.name === 'Reguler').price).toBe(125000);
+  expect(saved.objects.find((o: VenueObject) => o.id === 'row-b').price).toBe(125000);
+  expect(saved.objects.find((o: VenueObject) => o.id === 'row-b').seats[0].price).toBe(125000);
+  // Undo kembalikan harga kategori + kursi.
   await click('[aria-label^="Urungkan"]');
   saved = await save();
-  expect(saved.objects.find((o: VenueObject) => o.id === 'section-b').color ?? null).toBeNull();
-  // Redo terapkan lagi; save/load (parseVenueJson) tetap valid dan warna bertahan.
+  expect(saved.categories.find((c: { name: string }) => c.name === 'Reguler').price).toBe(100000);
+  // Redo terapkan lagi; save/load (parseVenueJson) tetap valid dan bertahan.
   await click('[aria-label^="Ulangi"]');
   saved = await save();
-  expect(saved.objects.find((o: VenueObject) => o.id === 'section-b').color).toBe('#0000ff');
-  const { doc, errors } = parseVenueJson(JSON.stringify(saved));
+  expect(saved.categories.find((c: { name: string }) => c.name === 'Reguler').price).toBe(125000);
+  const { errors } = parseVenueJson(JSON.stringify(saved));
   expect(errors).toEqual([]);
-  expect(doc!.objects.find((o) => o.id === 'section-b')!.color).toBe('#0000ff');
-  // Ekspor valid.
   expect(validateVenueDoc(saved).ok).toBe(true);
-  // Preview: legenda memuat kedua warna.
+  // Preview: legenda memuat kedua warna kategori.
   await click('[aria-label="Mode preview pembeli"]');
   await act(async () => (host.querySelector('.orion-legends > button') as HTMLButtonElement).click());
   const legendHtml = host.querySelector('.orion-legend-content')!.innerHTML;
   expect(legendHtml).toContain('#e11d48');
-  expect(legendHtml).toContain('#0000ff');
-  // Dokumen lama tanpa field warna tetap valid (fallback, bukan error).
+  // Dokumen lama tanpa categories tetap valid (migrasi mengisinya).
   const legacy = JSON.parse(JSON.stringify(saved));
-  for (const o of legacy.objects) delete o.color;
+  delete legacy.categories;
+  for (const o of legacy.objects) delete o.categoryId;
   expect(validateVenueDoc(legacy).ok).toBe(true);
   expect(parseVenueJson(JSON.stringify(legacy)).errors).toEqual([]);
-  // Warna invalid ditolak validasi.
+  expect(parseVenueJson(JSON.stringify(legacy)).doc!.categories.length).toBeGreaterThanOrEqual(2);
+  // Warna kategori invalid ditolak validasi.
   const bad = JSON.parse(JSON.stringify(saved));
-  bad.objects[0].color = 'merah';
+  bad.categories[0].color = 'merah';
   expect(validateVenueDoc(bad).ok).toBe(false);
 });
 
 it('preview section interactions use the real polygon or transformed SVG path', async () => {
   const { host, click } = await mountEditor();
   const doc = fixtureDoc();
+  const sectionB = doc.objects.find((o) => o.id === 'section-b')!;
   const curved: VenueObject = { ...sectionB,kind:'vector',points:[],d:'M0 0 Q100 -40 200 0 L160 120 Q100 150 40 120 Z',vTransform:{tx:600,ty:100,scale:2},svgFillRule:'evenodd' };
-  doc.objects = [sectionA,curved];
+  doc.objects = [doc.objects[0],curved];
   localStorage.setItem('seat-poc-venue-v1',JSON.stringify(doc));
   await click('[aria-label="Muat simpanan lokal"]');
   await click('[aria-label="Mode preview pembeli"]');

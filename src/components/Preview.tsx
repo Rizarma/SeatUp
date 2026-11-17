@@ -4,7 +4,7 @@ import { useStore } from '../store';
 import { fitViewBox, viewBoxStr } from '../lib/camera';
 import type { ViewBox } from '../lib/camera';
 import { sectionGeomFor, shapeCenter, vectorCanvasCenter } from '../lib/contain';
-import { sectionColorById } from '../lib/sectionColor';
+import { categoryColorForSection, categoryById } from '../lib/categories';
 import { bboxOf, rotationOf, toPointsString } from '../lib/geometry';
 import { Plus, Minus, Maximize, ChevronDown, X, ArrowLeft } from 'lucide-react';
 
@@ -28,7 +28,7 @@ export default function Preview() {
   const sections = useMemo(() => doc.objects.filter((o) => o.isSection), [doc.objects]);
   const colorOf = (sectionId: string): string => {
     if (!sections.some((o) => o.id === sectionId)) return ORPHAN_COLOR;
-    return sectionColorById(doc.objects, sectionId);
+    return categoryColorForSection(doc.objects, doc.categories, sectionId);
   };
 
   const seats = useMemo(() => doc.objects.flatMap((o) =>
@@ -39,7 +39,8 @@ export default function Preview() {
         ...s,
         section: isSec ? section.label : 'Tanpa section',
         sectionId: isSec ? section.id : ORPHAN_ID,
-        color: isSec ? sectionColorById(doc.objects, section.id) : ORPHAN_COLOR,
+        color: isSec ? categoryColorForSection(doc.objects, doc.categories, section.id) : ORPHAN_COLOR,
+        categoryName: isSec ? (section.categoryId ? categoryById(doc, section.categoryId)?.name ?? section.label : section.label) : 'Tanpa section',
       };
     })), [doc]);
 
@@ -170,7 +171,11 @@ export default function Preview() {
     bySection.set(s.section, e);
   }
 
-  const legendSections = sections.map((o) => ({ id: o.id, label: o.label, color: sectionColorById(doc.objects, o.id) }));
+  const legendSections = doc.categories.map((c) => {
+    const using = sections.filter((o) => o.categoryId === c.id);
+    const label = using.length > 0 && using.every((o) => o.label === c.name) ? c.name : using.length === 1 ? `${c.name} (${using[0].label}) · Rp${c.price.toLocaleString('id-ID')}` : `${c.name} · Rp${c.price.toLocaleString('id-ID')}`;
+    return { id: c.id, label, color: c.color };
+  });
   if (orphanSeats.length > 0) legendSections.push({ id: ORPHAN_ID, label: 'Tanpa section', color: ORPHAN_COLOR });
 
   return (

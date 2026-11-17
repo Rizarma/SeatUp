@@ -559,3 +559,87 @@ label.btn.filepick input { max-width: 100%; }
 .seat-selection .seat-actions > .row { margin-top:8px; }
 .seat-selection .seat-actions > .row > button { flex:1; min-height:40px; }
 .seat-selection .seat-mini { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-wrap:wrap; gap:4px 12px; }
+
+/* Dialog kategori: overlay + kartu modal di dalam side panel. */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgb(15 23 42 / 0.45);
+  display: grid; place-items: center; padding: 16px;
+}
+.modal-card {
+  width: min(360px, calc(100vw - 32px));
+  background: var(--card); color: var(--text);
+  border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.3);
+  padding: 16px;
+}
+.modal-card .subh { margin: 0 0 10px; font-size: 14px; }
+.modal-card .fld { margin-bottom: 10px; }
+.modal-card .row { margin-top: 12px; }
+.modal-card .row > button { flex: 1; min-height: 40px; }
+.modal-card .apply-primary { font-weight: 600; background: var(--accent); border-color: var(--accent); color: #fff; }
+.modal-card .modal-actions { margin-top: 14px; }
+.modal-card .modal-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; }
+.modal-card .modal-btn svg { flex: none; }
+.modal-card .modal-btn.apply-primary svg { filter: brightness(0) invert(1); }
+
+/* Color picker modern: swatch besar, ring jelas, custom gradient. */
+.modal-card .color-fld { margin-bottom: 4px; }
+.modal-card .color-picker { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.modal-card .color-picker.single { gap: 12px; }
+.modal-card .single-swatch {
+  position: relative; width: 36px; height: 36px; border-radius: 50%;
+  display: inline-block; cursor: pointer; flex: none;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px var(--border), inset 0 0 0 1px rgb(15 23 42 / 0.12);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.modal-card .single-swatch:hover { transform: scale(1.06); box-shadow: 0 0 0 2px var(--accent), inset 0 0 0 1px rgb(15 23 42 / 0.12); }
+.modal-card .single-swatch input[type="color"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; padding: 0; border: 0; }
+.modal-card .swatches { display: flex; align-items: center; gap: 8px; }
+.modal-card .sw {
+  width: 28px; height: 28px; min-height: 0; padding: 0;
+  border-radius: 50%; border: 2px solid transparent;
+  display: inline-grid; place-items: center; cursor: pointer;
+  color: #fff; transition: transform 0.12s ease, box-shadow 0.12s ease;
+  box-shadow: inset 0 0 0 1px rgb(15 23 42 / 0.12);
+}
+.modal-card .sw:hover { transform: scale(1.08); }
+.modal-card .sw.on {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--accent), inset 0 0 0 1px rgb(15 23 42 / 0.12);
+}
+.modal-card .sw svg { filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.4)); pointer-events: none; }
+.modal-card .custom-swatch {
+  position: relative; width: 28px; height: 28px; border-radius: 50%;
+  display: inline-grid; place-items: center; cursor: pointer; flex: none;
+  color: #0f172a; border: 2px dashed rgb(15 23 42 / 0.3);
+  background: conic-gradient(#f87171, #fbbf24, #34d399, #38bdf8, #a78bfa, #f87171);
+  transition: transform 0.12s ease;
+}
+.modal-card .custom-swatch:hover { transform: scale(1.08); }
+.modal-card .custom-swatch.on { border-style: solid; border-color: #fff; box-shadow: 0 0 0 2px var(--accent); color: #fff; }
+.modal-card .custom-swatch.on svg { filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.5)); }
+.modal-card .custom-swatch input[type="color"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; padding: 0; border: 0; }
+.modal-card .custom-swatch svg { pointer-events: none; }
+.modal-card .hex { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: nowrap; letter-spacing: 0.02em; }
+.category-panel .apply-primary { min-height: 40px; font-weight: 600; background: var(--accent); border-color: var(--accent); color: #fff; }
+.category-panel .add-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+.category-panel .add-btn svg { flex: none; }
+
+/* List kategori: baris rapi, tombol icon kecil (override .objlist button yang full-width). */
+.cat-list { gap: 4px; }
+.cat-list .cat-item { display: block; }
+.cat-list .cat-row { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 8px 4px; }
+.cat-list .cat-dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+.cat-list .cat-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cat-list .cat-name { font-size: 14px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-list .cat-sub { margin: 0; font-size: 12.5px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-list button.icon-btn {
+  flex: none; width: 32px; height: 32px; min-height: 0; padding: 0;
+  display: inline-grid; place-items: center;
+  border-radius: 8px; border-color: transparent; background: transparent;
+  color: var(--muted); text-align: center; white-space: nowrap;
+}
+.cat-list button.icon-btn:hover { background: var(--bg); color: var(--text); border-color: var(--border); }
+.cat-list button.icon-btn.danger:hover { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }

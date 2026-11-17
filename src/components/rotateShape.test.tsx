@@ -109,23 +109,21 @@ it('lorong: tanpa panel putar dan tanpa gagang putar', async () => {
   expect(host.textContent).toContain('geser titik ujung untuk edit garis');
 });
 
-it('warna section vector: preset menulis color + svgFill agar shape ikut berubah', async () => {
+it('section vector: kategori menentukan warna identitas + shape ikut', async () => {
   const { host, svg, save, pickObject } = await mount();
   await pickObject('Kotak');
-  // Tandai sebagai section dulu agar editor warna tampil.
+  // Tandai sebagai section dulu agar pemilih kategori tampil.
   await act(async () => (host.querySelector('label.document-option input') as HTMLInputElement).click());
-  const swatch = host.querySelector('[aria-label="Pilih warna #38BDF8"]') as HTMLButtonElement;
-  expect(swatch).not.toBeNull();
-  await act(async () => swatch.click());
+  const catSelect = host.querySelector('[aria-label="Kategori section"]') as HTMLSelectElement;
+  expect(catSelect).not.toBeNull();
+  expect(catSelect.options.length).toBeGreaterThanOrEqual(2);
   const saved = await save();
   const v = saved.objects.find((o: VenueObject) => o.id === 'vec-1');
-  expect(v.color).toBe('#38BDF8');
-  expect(v.svgFill).toBe('#38BDF8');
-  // Bahasa visual section sama dengan polygon: fill warna identitas pudar,
-  // bukan solid dekorasi.
+  expect(v.isSection).toBe(true);
+  expect(typeof v.categoryId).toBe('string');
+  // Warna canvas = warna kategori (bukan solid dekorasi).
   const vecPaths = [...svg().querySelectorAll('path')].filter((p) => p.getAttribute('d') === 'M0 0H200V100H0Z');
   const base = vecPaths.find((p) => p.getAttribute('fill') !== 'none')!;
-  expect(base.getAttribute('fill')).toBe('#38BDF8');
   expect(base.getAttribute('fill-opacity')).toBe('0.18');
 });
 

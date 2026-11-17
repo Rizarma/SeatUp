@@ -1,15 +1,19 @@
 import React from 'react';
 import SeatLayoutControls from './SeatLayoutControls';
 import {
-  Armchair, Circle, Footprints, Hand, Plus, Podium, Download, FileUp, FolderOpen, Image as ImageIcon, Layers, PenTool, Save,
-  Shapes, Square, Trash2, TriangleAlert, Upload,
+  Armchair, Circle, Footprints, Hand, Pencil, Plus, Podium, Download, FileUp, FolderOpen, Image as ImageIcon, Layers, PenTool, Save,
+  Shapes, Square, Trash2, TriangleAlert, Upload, Check, X,
 } from 'lucide-react';
-import type { Pt, RowParams, ObjKind, Seat, VenueObject } from '../lib/venue';
+import type { Pt, RowParams, ObjKind, Seat, TicketCategory, VenueObject } from '../lib/venue';
 
-export type RowForm = RowParams & { price: number };
+export type RowForm = RowParams;
 import { markEligibility } from '../lib/panelContext';
 import { shapeName } from '../lib/shapeLabel';
-import { SECTION_PALETTE, isValidSectionColor, sectionColorById } from '../lib/sectionColor';
+import { SECTION_PALETTE } from '../lib/sectionColor';
+import {
+  categoryById, categoryColorForSection,
+  createCategory, isValidCategoryColor, isValidCategoryName, isValidCategoryPrice, normalizeCategoryName,
+} from '../lib/categories';
 import { withoutObject, withObject } from '../lib/docObjects';
 import { CommittedNum, CommittedText, CtxHead, Num, ObjGroup, useDebouncedValue } from './ui';
 import { useStore } from '../store';
@@ -49,7 +53,7 @@ interface Props {
   onCloseDrawer: () => void;
 }
 
-type TabId = 'props' | 'objek' | 'dokumen';
+type TabId = 'category' | 'props' | 'objek' | 'dokumen';
 
 export default function SidePanel(p: Props) {
   const { state, select, selectSeats, setTool, update } = useStore();
@@ -59,7 +63,7 @@ export default function SidePanel(p: Props) {
   // Input mentah responsif tiap ketikan; filter memakai versi debounce-nya.
   const [queryRaw, setQueryRaw] = React.useState('');
   const query = useDebouncedValue(queryRaw, 200);
-  const [tab, setTab] = React.useState<TabId>('props');
+  const [tab, setTab] = React.useState<TabId>('category');
   const [svgName, setSvgName] = React.useState('');
   const [rasterName, setRasterName] = React.useState('');
   // Konteks mengikuti: ganti tool kreasi -> Properti (opsi tool); pilih objek -> Properti.
@@ -113,7 +117,7 @@ export default function SidePanel(p: Props) {
   })();
 
   const onTabKey = (e: React.KeyboardEvent) => {
-    const order: TabId[] = ['props', 'objek', 'dokumen'];
+    const order: TabId[] = ['category', 'props', 'objek', 'dokumen'];
     const i = order.indexOf(tab);
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') p.onHoverObject(null);
     if (e.key === 'ArrowRight') setTab(order[(i + 1) % order.length]);
@@ -122,10 +126,10 @@ export default function SidePanel(p: Props) {
 
   return (
     <div onPointerLeave={() => p.onHoverObject(null)} id="side-panel" className={p.open ? 'panel open' : 'panel'}>
-      <button className="drawer-close" onClick={() => { p.onHoverObject(null); p.onCloseDrawer(); }}>Tutup panel ✕</button>
+      <button className="drawer-close" onClick={() => { p.onHoverObject(null); p.onCloseDrawer(); }}>Tutup panel âœ•</button>
 
       <div className="ptabs" role="tablist" aria-label="Panel inspector" onKeyDown={onTabKey}>
-        {([['props', 'Properti'], ['objek', 'Objek'], ['dokumen', 'Dokumen']] as [TabId, string][]).map(([id, label]) => (
+        {([['category', 'Kategori'], ['props', 'Properti'], ['objek', 'Objek'], ['dokumen', 'Dokumen']] as [TabId, string][]).map(([id, label]) => (
           <button
             key={id} role="tab" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1}
             className={tab === id ? 'on' : ''} onClick={() => { p.onHoverObject(null); setTab(id); }}
@@ -134,6 +138,8 @@ export default function SidePanel(p: Props) {
       </div>
 
       <div className="pbody" role="tabpanel">
+        {tab === 'category' && <CategoryTab />}
+
         {tab === 'props' && (
           <>
             {selectedSeatIds.length > 0 ? (
@@ -142,11 +148,6 @@ export default function SidePanel(p: Props) {
               <>
                 {tool !== 'select' && tool !== 'seat' && <ToolOptions p={p} f={f} tool={tool} />}
                 {tool === 'seat' && <ToolOptions p={p} f={f} tool={tool} />}
-                {tool === 'seat' && p.sections.length === 1 && p.sections[0].isSection && (
-                  <section aria-label="Warna section aktif">
-                    <SectionColorEditor selected={p.sections[0]} />
-                  </section>
-                )}
                 {tool === 'select' && selected && <ObjectProps p={p} selected={selected} markOk={mark.ok} markReason={mark.reason} />}
                 {tool === 'select' && !selected && !p.focusId && (
                   <div className="empty">
@@ -164,7 +165,7 @@ export default function SidePanel(p: Props) {
         {tab === 'objek' && (
           <>
             <label className="fld search"><span>Cari</span>
-              <input value={queryRaw} placeholder="nama atau jenis…" onChange={(e) => { p.onHoverObject(null); setQueryRaw(e.target.value); }} />
+              <input value={queryRaw} placeholder="nama atau jenisâ€¦" onChange={(e) => { p.onHoverObject(null); setQueryRaw(e.target.value); }} />
             </label>
             {doc.objects.length === 0 && (
               <p className="muted">Kanvas kosong. Gambar polygon, impor SVG via tab Dokumen, atau muat contoh venue.</p>
@@ -176,7 +177,7 @@ export default function SidePanel(p: Props) {
                   {groupSections.map((s) => {
                     const n = doc.objects.flatMap((o) => o.seats).filter((x) => x.sectionId === s.id);
                     const bad = n.filter((x) => x.invalid).length;
-                    const dot = sectionColorById(doc.objects, s.id);
+                    const dot = categoryColorForSection(doc.objects, doc.categories, s.id);
                     return (
                       <li key={s.id} onPointerEnter={() => p.onHoverObject(s.id)} onPointerLeave={() => p.onHoverObject(null)} onFocus={() => p.onHoverObject(s.id)} onBlur={() => p.onHoverObject(null)}>
                         <button className={s.id === selectedId ? 'on' : ''} onClick={() => { p.setSectionId(s.id); pickObject(s.id); }}>
@@ -281,7 +282,7 @@ export default function SidePanel(p: Props) {
         <div className="pfoot">
           {selected && tool !== 'select' && (
             <button className="pctx" onClick={() => setTool('select')} title="Lihat properti lengkap">
-              Untuk: {selected.label} — lihat ▸
+              Untuk: {selected.label} â€” lihat â–¸
             </button>
           )}
           <button className="cta" disabled={cta.disabled} onClick={cta.fn}>{cta.label}</button>
@@ -290,7 +291,7 @@ export default function SidePanel(p: Props) {
 
       {invalidTotal > 0 && (
         <div className="pnote" role="status">
-          <p className="warn"><TriangleAlert size={13} strokeWidth={2} aria-hidden="true" /> {invalidTotal} kursi invalid di luar section — tidak dijual di preview. Perbaiki dari Properti barisnya.</p>
+          <p className="warn"><TriangleAlert size={13} strokeWidth={2} aria-hidden="true" /> {invalidTotal} kursi invalid di luar section â€” tidak dijual di preview. Perbaiki dari Properti barisnya.</p>
         </div>
       )}
     </div>
@@ -298,20 +299,23 @@ export default function SidePanel(p: Props) {
 }
 
 function ToolOptions({ p, f, tool }: { p: Props; f: RowForm; tool: string }) {
+  const { state } = useStore();
   if (tool === 'hand') return <CtxHead icon={Hand} title="Geser kanvas" sub="Seret di mana saja untuk menggeser tampilan. Scroll untuk zoom." />;
   if (tool === 'seat') {
     return <CtxHead icon={Armchair} title="Pilih kursi" sub="Klik pilih · Shift/Cmd/Ctrl multi · seret marquee" />;
   }
   if (tool === 'row') {
-    const targetLabel = p.focusId
-      ? p.sections.find((s) => s.id === p.focusId)?.label ?? p.sections[0]?.label ?? null
-      : p.sectionId ? p.sections.find((s) => s.id === p.sectionId)?.label ?? null : null;
-    const hasTarget = !!(p.focusId ?? p.sectionId);
+    const targetId = p.focusId ?? p.sectionId ?? null;
+    const targetLabel = targetId
+      ? p.sections.find((s) => s.id === targetId)?.label ?? p.sections[0]?.label ?? null
+      : null;
+    const hasTarget = !!targetId;
+    const cat = targetId ? categoryById(state.doc, state.doc.objects.find((o) => o.id === targetId)?.categoryId) : null;
     return (
       <>
         <CtxHead icon={Armchair} title="Buat baris kursi" sub={hasTarget && targetLabel ? targetLabel : 'Masuk ke section dulu'} />
         {!hasTarget && (
-          <p className="muted">Masuk ke section dulu (klik dua kali section di kanvas) — baris hanya bisa dibuat di dalam section fokus.</p>
+          <p className="muted">Masuk ke section dulu (klik dua kali section di kanvas) â€” baris hanya bisa dibuat di dalam section fokus.</p>
         )}
         <label className="fld"><span>Mode</span>
           <select value={f.mode} onChange={(e) => p.setRowForm({ ...f, mode: e.target.value as 'straight' | 'arc' })}>
@@ -324,12 +328,19 @@ function ToolOptions({ p, f, tool }: { p: Props; f: RowForm; tool: string }) {
         <Num label="Jarak kursi" value={f.seatGap} onChange={(v) => p.setRowForm({ ...f, seatGap: v })} min={8} max={120} />
         <Num label="Jarak baris" value={f.rowGap} onChange={(v) => p.setRowForm({ ...f, rowGap: v })} min={8} max={160} />
         {f.mode === 'straight'
-          ? <Num label="Sudut (°)" value={f.angleDeg} onChange={(v) => p.setRowForm({ ...f, angleDeg: v })} min={-180} max={180} />
+          ? <Num label="Sudut (Â°)" value={f.angleDeg} onChange={(v) => p.setRowForm({ ...f, angleDeg: v })} min={-180} max={180} />
           : <Num label="Radius (px)" value={f.radius} onChange={(v) => p.setRowForm({ ...f, radius: v })} min={20} max={1000} />}
-        {f.mode === 'arc' && <Num label="Bentang (°)" value={f.spanDeg} onChange={(v) => p.setRowForm({ ...f, spanDeg: v })} min={5} max={360} />}
-        {f.mode === 'arc' && <Num label="Sudut awal (°)" value={f.startDeg} onChange={(v) => p.setRowForm({ ...f, startDeg: v })} min={-180} max={360} />}
+        {f.mode === 'arc' && <Num label="Bentang (Â°)" value={f.spanDeg} onChange={(v) => p.setRowForm({ ...f, spanDeg: v })} min={5} max={360} />}
+        {f.mode === 'arc' && <Num label="Sudut awal (Â°)" value={f.startDeg} onChange={(v) => p.setRowForm({ ...f, startDeg: v })} min={-180} max={360} />}
         <Num label="Offset label" value={f.rowLabelOffset} onChange={(v) => p.setRowForm({ ...f, rowLabelOffset: v })} min={0} max={25} />
-        <Num label="Harga (Rp)" value={f.price} onChange={(v) => p.setRowForm({ ...f, price: v })} min={0} step={5000} />
+        {cat ? (
+          <p className="muted">
+            <i aria-hidden="true" style={{ background: cat.color, width: 12, height: 12, borderRadius: '50%', display: 'inline-block', marginRight: 6, verticalAlign: -1 }} />
+            Harga ngikut kategori: <strong>{cat.name}</strong> · Rp{cat.price.toLocaleString('id-ID')}. Ubah di tab Kategori.
+          </p>
+        ) : (
+          <p className="muted">Harga ngikut kategori section aktif. Atur di tab Kategori.</p>
+        )}
         {p.anchor && <p className="muted">Jangkar: {p.anchor[0]}, {p.anchor[1]}.</p>}
         {p.validCount !== null && (p.focusId ?? p.sectionId) && (
           <p className="muted">{p.validCount} kandidat valid (footprint penuh di dalam) · {p.rejectedCount} ditolak (keluar/lubang/lorong).</p>
@@ -394,35 +405,29 @@ function SeatSelectionEditor() {
 function SeatSelectionEditorInner({ entries }: {
   entries: Array<{ seat: Seat; objId: string }>;
 }) {
-  const { update, selectSeats } = useStore();
+  const { state, update, selectSeats } = useStore();
   const [msg, setMsg] = React.useState('');
   const rows = new Set(entries.map((e) => e.seat.row));
   const nums = new Set(entries.map((e) => e.seat.number));
-  const prices = new Set(entries.map((e) => e.seat.price));
   const commonRow = rows.size === 1 ? [...rows][0] : null;
   const commonNum = nums.size === 1 ? [...nums][0] : null;
-  const commonPrice = prices.size === 1 ? [...prices][0] : null;
   const [rowDraft, setRowDraft] = React.useState(commonRow ?? '');
   const [numDraft, setNumDraft] = React.useState(commonNum ?? '');
-  const [priceDraft, setPriceDraft] = React.useState(commonPrice != null ? String(commonPrice) : '');
   const invalidN = entries.filter((e) => e.seat.invalid).length;
-  const mixed = entries.length > 1 && (rows.size > 1 || nums.size > 1 || prices.size > 1);
+  const mixed = entries.length > 1 && (rows.size > 1 || nums.size > 1);
+  // Harga kursi selalu ngikut kategori section-nya â€” tampilkan sebagai info, bukan input.
+  const catNames = [...new Set(entries.map((e) => {
+    const owner = state.doc.objects.find((o) => o.id === e.seat.sectionId && o.isSection);
+    const cat = owner?.categoryId ? categoryById(state.doc, owner.categoryId) : null;
+    return cat ? `${cat.name} · Rp${cat.price.toLocaleString('id-ID')}` : null;
+  }).filter((x) => !!x))] as string[];
 
   const apply = () => {
     const wantRow = rowDraft !== (commonRow ?? '');
     const wantNum = numDraft !== (commonNum ?? '');
-    const wantPrice = priceDraft !== (commonPrice != null ? String(commonPrice) : '');
-    if (!wantRow && !wantNum && !wantPrice) {
+    if (!wantRow && !wantNum) {
       setMsg('Tak ada perubahan.');
       return;
-    }
-    let priceNum: number | null = null;
-    if (wantPrice) {
-      priceNum = Number(priceDraft);
-      if (!Number.isFinite(priceNum) || priceNum < 0) {
-        setMsg('Harga harus angka ≥ 0.');
-        return;
-      }
     }
     const ids = new Set(entries.map((e) => e.seat.id));
     update((d) => ({
@@ -431,7 +436,7 @@ function SeatSelectionEditorInner({ entries }: {
         ? {
           ...o,
           seats: o.seats.map((s) => ids.has(s.id)
-            ? { ...s, row: wantRow ? rowDraft : s.row, number: wantNum ? numDraft : s.number, price: priceNum != null ? priceNum : s.price }
+            ? { ...s, row: wantRow ? rowDraft : s.row, number: wantNum ? numDraft : s.number }
             : s),
         }
         : o),
@@ -452,21 +457,17 @@ function SeatSelectionEditorInner({ entries }: {
 
   return (
     <div className="object-properties seat-selection" aria-label="Kursi terpilih">
-      <CtxHead icon={Armchair} title={`${entries.length} kursi terpilih`} sub={`${mixed ? 'Nilai campuran — isi field untuk ubah semua' : 'Ubah baris, nomor, atau harga kursi yang dipilih'}${invalidN > 0 ? ` · ${invalidN} invalid` : ''}`} />
+      <CtxHead icon={Armchair} title={`${entries.length} kursi terpilih`} sub={`${mixed ? 'Nilai campuran â€” isi field untuk ubah semua' : 'Ubah baris atau nomor kursi yang dipilih'}${invalidN > 0 ? ` · ${invalidN} invalid` : ''}`} />
       <div className="object-config-group">
         <label className="fld"><span>Baris{commonRow == null ? ' (campuran)' : ''}</span>
-          <input aria-label="Baris kursi terpilih" value={rowDraft} placeholder={commonRow == null ? 'Campuran — isi untuk ubah semua' : undefined}
+          <input aria-label="Baris kursi terpilih" value={rowDraft} placeholder={commonRow == null ? 'Campuran â€” isi untuk ubah semua' : undefined}
             onChange={(e) => { setRowDraft(e.target.value); setMsg(''); }} />
         </label>
         <label className="fld"><span>Nomor{commonNum == null ? ' (campuran)' : ''}</span>
-          <input aria-label="Nomor kursi terpilih" value={numDraft} placeholder={commonNum == null ? 'Campuran — isi untuk ubah semua' : undefined}
+          <input aria-label="Nomor kursi terpilih" value={numDraft} placeholder={commonNum == null ? 'Campuran â€” isi untuk ubah semua' : undefined}
             onChange={(e) => { setNumDraft(e.target.value); setMsg(''); }} />
         </label>
-        <label className="fld"><span>Harga (Rp){commonPrice == null ? ' (campuran)' : ''}</span>
-          <input aria-label="Harga kursi terpilih" type="number" min={0} step={5000} value={priceDraft}
-            placeholder={commonPrice == null ? 'Campuran' : undefined}
-            onChange={(e) => { setPriceDraft(e.target.value); setMsg(''); }} />
-        </label>
+        <p className="muted">Harga ngikut kategori{catNames.length > 0 ? `: ${catNames.join(' / ')}` : ''}. Ubah di tab Kategori.</p>
       </div>
       <div className="object-config-group seat-actions">
         <button className="apply-primary" onClick={apply}>Terapkan ke {entries.length} kursi</button>
@@ -485,39 +486,28 @@ function SeatSelectionEditorInner({ entries }: {
   );
 }
 
-function SectionColorEditor({ selected }: { selected: VenueObject }) {
+function SectionCategorySelector({ selected }: { selected: VenueObject }) {
   const { state, update } = useStore();
-  const current = sectionColorById(state.doc.objects, selected.id);
-  const set = (color: string) => {
-    if (!isValidSectionColor(color)) return;
-    // Vector dirender dari svgFill (bukan color), jadi tulis keduanya agar
-    // shape-nya ikut berubah — color tetap jadi identitas (kursi/legenda).
-    update((d) => withObject(d, selected.id, (o) =>
-      o.kind === 'vector' ? { ...o, color, svgFill: color } : { ...o, color },
-    ));
-  };
-  const customActive = !SECTION_PALETTE.some((c) => c.toLowerCase() === current.toLowerCase());
+  const cats = state.doc.categories;
+  const currentId = selected.categoryId ?? cats[0]?.id ?? null;
+  const current = currentId ? categoryById(state.doc, currentId) : null;
   return (
     <div className="section-color-config">
-      <div className="section-color-row">
-        <span id={`section-color-label-${selected.id}`}>Warna section</span>
-        <div className="color-swatches" role="group" aria-labelledby={`section-color-label-${selected.id}`}>
-          {SECTION_PALETTE.map((c) => {
-            const on = current.toLowerCase() === c.toLowerCase();
-            return (
-              <button key={c} type="button" className={on ? 'on' : ''} aria-label={`Pilih warna ${c}`}
-                aria-pressed={on} title={c} style={{ background: c }} onClick={() => set(c)} />
-            );
-          })}
-          <label className={customActive ? 'custom-well on' : 'custom-well'} title="Warna kustom"
-            style={customActive ? { background: current } : undefined}>
-            <input type="color" aria-label="Warna section"
-              value={isValidSectionColor(selected.color) ? (selected.color as string) : current}
-              onChange={(e) => set(e.target.value)} />
-            <Plus size={14} aria-hidden="true" />
-          </label>
-        </div>
-      </div>
+      <label className="fld"><span>Kategori tiket</span>
+        <select
+          aria-label="Kategori section"
+          value={current?.id ?? ''}
+          onChange={(e) => {
+            const id = e.target.value || null;
+            update((d) => withObject(d, selected.id, { categoryId: id }));
+          }}
+        >
+          {cats.map((c) => (
+            <option key={c.id} value={c.id}>{c.name} · Rp{c.price.toLocaleString('id-ID')}</option>
+          ))}
+        </select>
+      </label>
+      {cats.length === 0 && <p className="muted">Belum ada kategori. Buat dulu di tab Kategori.</p>}
     </div>
   );
 }
@@ -602,7 +592,7 @@ function ObjectProps({ p, selected, markOk, markReason }: {
             onChange={() => selected.isSection ? p.onUnmarkSection() : p.onMarkSection()} />
         </label>
         {!selected.isSection && !markOk && <p className="muted">{markReason}.</p>}
-        {selected.isSection && <SectionColorEditor selected={selected} />}
+        {selected.isSection && <SectionCategorySelector selected={selected} />}
         {!p.focusId && selected.isSection && (
           <div className="row section-entry-row"><button onClick={() => p.onEnterSection(selected.id)}>Edit isi section</button></div>
         )}
@@ -625,14 +615,18 @@ function ObjectProps({ p, selected, markOk, markReason }: {
           </select>
         </label>
       )}
-      {isRow && (
-        <CommittedNum key={`price-${selected.id}`} label="Harga/kursi (Rp)" value={selected.price} onCommit={(v) => {
-          update((d) => ({ ...d, objects: d.objects.map((o) => {
-            if (o.id !== selected.id) return o;
-            return { ...o, price: v, seats: o.seats.map((s) => ({ ...s, price: v })) };
-          }) }));
-        }} min={0} step={5000} />
-      )}
+      {isRow && (() => {
+        const owner = selected.sectionId ? doc.objects.find((o) => o.id === selected.sectionId && o.isSection) : null;
+        const cat = owner?.categoryId ? categoryById(doc, owner.categoryId) : null;
+        const price = cat ? cat.price : selected.price;
+        return (
+          <p className="muted">
+            {cat && <i aria-hidden="true" style={{ background: cat.color, width: 12, height: 12, borderRadius: '50%', display: 'inline-block', marginRight: 6, verticalAlign: -1 }} />}
+            Harga/kursi: <strong>Rp{price.toLocaleString('id-ID')}</strong>
+            {cat ? ` · ngikut kategori ${cat.name}. Ubah di tab Kategori.` : ' · section tanpa kategori.'}
+          </p>
+        );
+      })()}
       {selected.kind === 'aisle' && (
         <CommittedNum key={`width-${selected.id}`} label="Lebar lorong (px)" value={selected.width} onCommit={(v) => {
           update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === selected.id ? { ...o, width: v } : o)) }));
@@ -649,14 +643,14 @@ function ObjectProps({ p, selected, markOk, markReason }: {
       {!!p.focusId && isRow && selected.sectionId !== p.focusId && !selected.seats.some((s) => s.sectionId === p.focusId) && selected.id !== p.focusId && (
         <p className="muted">Kelompok ini milik section lain. Susunan di bawah memakai section aktif agar tidak mengubah yang tersembunyi.</p>
       )}
-      {selected.guess && <p className="muted">Tebakan import: {selected.guess} · keyakinan {Math.round(selected.source.confidence * 100)}% — wajib dikoreksi.</p>}
+      {selected.guess && <p className="muted">Tebakan import: {selected.guess} · keyakinan {Math.round(selected.source.confidence * 100)}% â€” wajib dikoreksi.</p>}
       {selected.kind === 'aisle' && (
         <p className="muted">Seret untuk memindahkan · geser titik ujung untuk edit garis.</p>
       )}
       {isRow && selected.seats.length > 0 && (
         <div>
           <p className="muted">
-            {invalidN} dari {selected.seats.length} kursi di luar section — ditandai invalid, tidak dijual di preview.
+            {invalidN} dari {selected.seats.length} kursi di luar section â€” ditandai invalid, tidak dijual di preview.
             Geser section/row hingga masuk, atau buang yang invalid.
           </p>
           {selected.seats.some((s) => s.invalid) && <button onClick={p.onPurgeInvalid}>Buang kursi invalid</button>}
@@ -668,6 +662,195 @@ function ObjectProps({ p, selected, markOk, markReason }: {
         update((d) => ({ ...d, objects: d.objects.filter((o) => o.id !== selected.id) }));
         select(null);
       }}><Trash2 size={15} aria-hidden="true" />Hapus objek</button>
+      </div>
+    </div>
+  );
+}
+
+function CategoryTab() {
+  const { state, update } = useStore();
+  const { doc } = state;
+  const cats = doc.categories;
+  const [msg, setMsg] = React.useState('');
+  const [dialog, setDialog] = React.useState<null | { mode: 'add' } | { mode: 'edit'; id: string }>(null);
+
+  const usedBy = (id: string) => doc.objects.filter((o) => o.isSection && o.categoryId === id);
+
+  const openAdd = () => {
+    setMsg('');
+    setDialog({ mode: 'add' });
+  };
+  const openEdit = (c: TicketCategory) => {
+    setMsg('');
+    setDialog({ mode: 'edit', id: c.id });
+  };
+  const closeDialog = () => setDialog(null);
+
+  const submitAdd = (name: string, price: string, color: string): string | null => {
+    const cleanName = normalizeCategoryName(name);
+    const priceNum = Number(price);
+    if (!isValidCategoryName(cleanName)) return 'Nama kategori wajib diisi (maks 60 karakter).';
+    if (cats.some((c) => c.name.toLowerCase() === cleanName.toLowerCase())) return `Nama "${cleanName}" sudah dipakai.`;
+    if (!isValidCategoryPrice(priceNum)) return 'Harga harus angka â‰¥ 0.';
+    if (!isValidCategoryColor(color)) return 'Warna tak valid.';
+    const cat = createCategory(cleanName, Math.round(priceNum), color);
+    update((d) => ({ ...d, categories: [...d.categories, cat] }));
+    setMsg(`Kategori "${cleanName}" ditambah.`);
+    return null;
+  };
+
+  const submitEdit = (id: string, name: string, price: string, color: string): string | null => {
+    const cleanName = normalizeCategoryName(name);
+    const priceNum = Number(price);
+    if (!isValidCategoryName(cleanName)) return 'Nama kategori wajib diisi (maks 60 karakter).';
+    if (cats.some((c) => c.id !== id && c.name.toLowerCase() === cleanName.toLowerCase())) return `Nama "${cleanName}" sudah dipakai kategori lain.`;
+    if (!isValidCategoryPrice(priceNum)) return 'Harga harus angka â‰¥ 0.';
+    if (!isValidCategoryColor(color)) return 'Warna tak valid.';
+    const rounded = Math.round(priceNum);
+    update((d) => ({
+      ...d,
+      categories: d.categories.map((c) => (c.id === id ? { ...c, name: cleanName, price: rounded, color } : c)),
+    }));
+    setMsg(`Kategori "${cleanName}" disimpan â€” harga kursi section terkait ikut berubah.`);
+    return null;
+  };
+
+  const remove = (id: string) => {
+    const users = usedBy(id);
+    if (users.length > 0) {
+      setMsg(`Tak bisa hapus: dipakai ${users.length} section (${users.slice(0, 3).map((s) => s.label).join(', ')}${users.length > 3 ? 'â€¦' : ''}). Pindahkan section dulu.`);
+      return;
+    }
+    if (cats.length <= 1) {
+      setMsg('Minimal 1 kategori harus ada.');
+      return;
+    }
+    const gone = cats.find((c) => c.id === id);
+    update((d) => ({ ...d, categories: d.categories.filter((c) => c.id !== id) }));
+    setMsg(`Kategori "${gone?.name ?? ''}" dihapus.`);
+  };
+
+  const dialogCat = dialog?.mode === 'edit' ? cats.find((c) => c.id === dialog.id) ?? null : null;
+
+  return (
+    <div className="category-panel" aria-label="Kategori tiket">
+      <CtxHead icon={Layers} title="Kategori tiket" sub="1 section = 1 kategori · harga & warna ngikut kategori" />
+      <div className="object-config-group">
+        <div className="row">
+          <button className="apply-primary add-btn" onClick={openAdd} aria-label="Tambah kategori"><Plus size={16} strokeWidth={2.5} aria-hidden="true" />Tambah kategori</button>
+        </div>
+      </div>
+      <div className="object-config-group">
+        <h4 className="subh">Daftar ({cats.length})</h4>
+        {cats.length === 0 && <p className="muted">Belum ada kategori.</p>}
+        <ul className="objlist cat-list">
+          {cats.map((c) => {
+            const users = usedBy(c.id);
+            return (
+              <li key={c.id} className="cat-item">
+                <div className="cat-row">
+                  <i aria-hidden="true" className="cat-dot" style={{ background: c.color }} />
+                  <span className="cat-text">
+                    <strong className="cat-name">{c.name}</strong>
+                    <span className="muted cat-sub">Rp{c.price.toLocaleString('id-ID')}{users.length > 0 ? ` · ${users.length} section` : ' · belum dipakai'}</span>
+                  </span>
+                  <button type="button" className="icon-btn" aria-label={`Ubah ${c.name}`} data-tip={`Ubah ${c.name}`} onClick={() => openEdit(c)}>
+                    <Pencil size={15} strokeWidth={2} aria-hidden="true" />
+                  </button>
+                  <button type="button" className="icon-btn danger" aria-label={`Hapus ${c.name}`} data-tip={`Hapus ${c.name}`} onClick={() => remove(c.id)}>
+                    <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        {msg && <p className="muted" role="status">{msg}</p>}
+      </div>
+      {dialog && (
+        <CategoryDialog
+          key={dialog.mode === 'edit' ? dialog.id : 'add'}
+          title={dialog.mode === 'add' ? 'Tambah kategori' : `Ubah ${dialogCat?.name ?? 'kategori'}`}
+          initial={dialog.mode === 'edit' && dialogCat
+            ? { name: dialogCat.name, price: String(dialogCat.price), color: dialogCat.color }
+            : { name: '', price: '100000', color: SECTION_PALETTE[cats.length % SECTION_PALETTE.length] ?? '#A78BFA' }}
+          nameLabel={dialog.mode === 'add' ? 'Nama kategori baru' : `Nama kategori ${dialogCat?.name ?? ''}`}
+          priceLabel={dialog.mode === 'add' ? 'Harga kategori baru' : `Harga kategori ${dialogCat?.name ?? ''}`}
+          colorLabel={dialog.mode === 'add' ? 'Warna kustom kategori baru' : `Warna kustom kategori ${dialogCat?.name ?? ''}`}
+          onClose={closeDialog}
+          onSubmit={(name, price, color) => dialog.mode === 'add'
+            ? submitAdd(name, price, color)
+            : submitEdit(dialog.id, name, price, color)}
+          onDone={closeDialog}
+        />
+      )}
+    </div>
+  );
+}
+
+function CategoryDialog({ title, initial, nameLabel, priceLabel, colorLabel, onClose, onSubmit, onDone }: {
+  title: string;
+  initial: { name: string; price: string; color: string };
+  nameLabel: string;
+  priceLabel: string;
+  colorLabel: string;
+  onClose: () => void;
+  onSubmit: (name: string, price: string, color: string) => string | null;
+  onDone: () => void;
+}) {
+  const [name, setName] = React.useState(initial.name);
+  const [price, setPrice] = React.useState(initial.price);
+  const [color, setColor] = React.useState(initial.color);
+  const [err, setErr] = React.useState('');
+  const nameRef = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => {
+    nameRef.current?.focus();
+  }, []);
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const save = () => {
+    const msg = onSubmit(name, price, color);
+    if (msg) {
+      setErr(msg);
+      return;
+    }
+    onDone();
+  };
+  return (
+    <div
+      className="modal-overlay"
+      role="presentation"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="modal-card" role="dialog" aria-modal="true" aria-label={title}>
+        <h4 className="subh">{title}</h4>
+        <label className="fld"><span>Nama tiket</span>
+          <input ref={nameRef} aria-label={nameLabel} value={name} placeholder="mis. VIP / Festival / Reguler"
+            onChange={(e) => { setName(e.target.value); setErr(''); }} />
+        </label>
+        <label className="fld"><span>Harga (Rp)</span>
+          <input aria-label={priceLabel} type="number" min={0} step={5000} value={price}
+            onChange={(e) => { setPrice(e.target.value); setErr(''); }} />
+        </label>
+        <label className="fld color-fld"><span>Warna</span>
+          <div className="color-picker single">
+            <label className="single-swatch" title="Pilih warna" style={{ background: color }}>
+              <input aria-label={colorLabel} type="color" value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : '#A78BFA'}
+                onChange={(e) => { setColor(e.target.value); setErr(''); }} />
+            </label>
+            <code className="muted hex">{color.toUpperCase()}</code>
+          </div>
+        </label>
+        {err && <p className="muted" role="alert">{err}</p>}
+        <div className="row modal-actions">
+          <button className="apply-primary modal-btn" onClick={save}><Check size={16} strokeWidth={2.5} aria-hidden="true" />Simpan</button>
+          <button className="modal-btn" onClick={onClose}><X size={16} strokeWidth={2.5} aria-hidden="true" />Batal</button>
+        </div>
       </div>
     </div>
   );
