@@ -617,10 +617,14 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         if (o.kind === 'aisle') {
           const arot = rotationOf(o);
           const ac = arot !== 0 ? shapeCenter(o) : null;
+          // Lorong terpilih harus TETAP tebal (strokeWidth = o.width), hanya warna
+          // berubah biru. Jangan pakai selStyle di sini: style.strokeWidth: 3
+          // akan mengalahkan atribut presentation strokeWidth (CSS > atribut),
+          // sehingga lorong menyusut jadi garis tipis 3px saat diklik.
           return (
             <g key={o.id} {...sectionEvents} aria-label={o.label}
               transform={ac ? `rotate(${arot} ${ac[0]} ${ac[1]})` : undefined}>
-              <polyline points={ptsStr(o.points)} fill="none" stroke="#94a3b8" strokeWidth={o.width} strokeLinecap="round" opacity={0.8} {...selectDrag} style={selStyle} />
+              <polyline points={ptsStr(o.points)} fill="none" stroke={isSel ? '#2563eb' : '#94a3b8'} strokeWidth={o.width} strokeLinecap="round" opacity={isSel ? 1 : 0.8} {...selectDrag} style={{ cursor: tool === 'select' ? 'move' : undefined }} />
             </g>
           );
         }
