@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useMemo, useReducer } from 'react';
 import type { VenueDoc } from './lib/venue';
 import { emptyVenue, normalizeSectionFlags } from './lib/venue';
+import { ensureCategories, syncCategoryPrices } from './lib/categories';
 import { revalidateSeats } from './lib/contain';
 
 export type Tool = 'hand' | 'select' | 'seat' | 'polygon' | 'stage' | 'rectangle' | 'circle' | 'aisle' | 'row';
@@ -38,7 +39,9 @@ function reducer(s: State, a: Action): State {
       const norm = normalizeSectionFlags(a.doc.objects);
       const base = norm.objects === a.doc.objects ? a.doc : { ...a.doc, objects: norm.objects };
       const rev = revalidateSeats(base.objects);
-      const doc = rev.objects === base.objects ? base : { ...base, objects: rev.objects };
+      const synced = rev.objects === base.objects ? base : { ...base, objects: rev.objects };
+      const withCat = syncCategoryPrices(ensureCategories(synced));
+      const doc = withCat.objects === base.objects && withCat.categories === base.categories ? base : withCat;
       const alive = new Set(doc.objects.flatMap((o) => o.seats.map((x) => x.id)));
       return {
         ...s,
@@ -85,8 +88,10 @@ function reducer(s: State, a: Action): State {
       const norm = normalizeSectionFlags(a.doc.objects);
       const base = norm.objects === a.doc.objects ? a.doc : { ...a.doc, objects: norm.objects };
       const rev = revalidateSeats(base.objects);
+      const synced = rev.objects === base.objects ? base : { ...base, objects: rev.objects };
+      const doc = syncCategoryPrices(ensureCategories(synced));
       return {
-        doc: rev.objects === base.objects ? base : { ...base, objects: rev.objects },
+        doc,
         past: [], future: [], selectedId: null, selectedSeatIds: [], tool: 'select', dirty: false,
       };
     }

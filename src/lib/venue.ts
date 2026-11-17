@@ -19,6 +19,16 @@ export interface Seat {
   radius?: number;
 }
 
+export interface TicketCategory {
+  id: string;
+  /** Nama tiket, mis. VIP / Reguler. */
+  name: string;
+  /** Harga per kursi (Rp). */
+  price: number;
+  /** Warna identitas kategori (hex). */
+  color: string;
+}
+
 export interface RowParams {
   mode: 'straight' | 'arc';
   rows: number;
@@ -50,6 +60,8 @@ export interface VenueObject {
   isSection?: boolean;
   /** Warna identitas section (tipe tiket). Opsional; fallback palet bila kosong. */
   color?: string | null;
+  /** Kategori tiket pemilik section ini (1 section = 1 kategori). */
+  categoryId?: string | null;
   /** Section pemilik baris ini (diisi saat baris dibuat). */
   sectionId?: string | null;
   /**
@@ -89,6 +101,8 @@ export interface VenueDoc {
   height: number;
   backgroundImage: string | null;
   objects: VenueObject[];
+  /** Master tiket kategori (sumber tunggal nama + harga + warna). */
+  categories: TicketCategory[];
 }
 
 let fallbackCounter = 0;
@@ -234,6 +248,7 @@ export function makeObject(partial: Partial<VenueObject> & { kind: ObjKind; labe
     isSection: false,
     sectionId: null,
     color: null,
+    categoryId: null,
     d: null,
     vTransform: null,
     svgFill: null,
@@ -255,6 +270,10 @@ export function emptyVenue(): VenueDoc {
     height: 800,
     backgroundImage: null,
     objects: [],
+    categories: [
+      { id: uid('cat'), name: 'VIP', price: 150000, color: '#A78BFA' },
+      { id: uid('cat'), name: 'Reguler', price: 100000, color: '#38BDF8' },
+    ],
   };
 }
 
@@ -262,6 +281,9 @@ export function emptyVenue(): VenueDoc {
 export function sampleVenue(): VenueDoc {
   const doc = emptyVenue();
   doc.name = 'Contoh Venue-U (sintetis)';
+  // Pakai 2 kategori bawaan emptyVenue untuk kedua kelompok baris.
+  const vip = doc.categories[0];
+  const reg = doc.categories[1];
   const stage = makeObject({
     kind: 'stage',
     label: 'Panggung',
@@ -278,11 +300,11 @@ export function sampleVenue(): VenueDoc {
     label: 'Tribun U',
     points: [[600, 400]],
     closed: false,
-    price: 150000,
+    price: vip.price,
     rowParams: arcParams,
     seats: arcSeatsList.map((s, i) => ({
       id: `seat-arc-${i}`, row: s.row, number: s.number,
-      x: s.x, y: s.y, status: 'available' as SeatStatus, price: 150000, sectionId: null,
+      x: s.x, y: s.y, status: 'available' as SeatStatus, price: vip.price, sectionId: null,
     })),
   });
   const sideParams: RowParams = {
@@ -295,11 +317,11 @@ export function sampleVenue(): VenueDoc {
     label: 'Blok Kiri',
     points: [[120, 300]],
     closed: false,
-    price: 100000,
+    price: reg.price,
     rowParams: sideParams,
     seats: stSeats.map((s, i) => ({
       id: `seat-side-${i}`, row: s.row, number: s.number,
-      x: s.x, y: s.y, status: 'available' as SeatStatus, price: 100000, sectionId: null,
+      x: s.x, y: s.y, status: 'available' as SeatStatus, price: reg.price, sectionId: null,
     })),
   });
   doc.objects = [stage, arc, side];

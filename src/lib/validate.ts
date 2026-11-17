@@ -1,5 +1,6 @@
-import type { VenueDoc, VenueObject, Seat, ObjKind, SeatStatus } from './venue';
+import type { VenueDoc, VenueObject, Seat, ObjKind, SeatStatus, TicketCategory } from './venue';
 import { normalizeSectionFlags } from './venue';
+import { ensureCategories } from './categories';
 
 const KINDS: ObjKind[] = ['stage', 'aisle', 'section', 'row-straight', 'row-arc', 'import-draft', 'vector'];
 const STATUSES: SeatStatus[] = ['available', 'pick', 'book', 'taken'];
@@ -25,6 +26,24 @@ function checkSeat(s: unknown, path: string, errors: string[]): void {
   }
   if (o['radius'] !== undefined && (typeof o['radius'] !== 'number' || !Number.isFinite(o['radius']) || o['radius'] <= 0)) errors.push(`${path}: radius tak valid`);
   if (o['invalid'] !== undefined && typeof o['invalid'] !== 'boolean') errors.push(`${path}: invalid tak valid`);
+}
+
+function checkCategory(c: unknown, path: string, errors: string[]): void {
+  const v = c as Record<string, unknown>;
+  if (typeof v !== 'object' || v === null) {
+    errors.push(`${path}: bukan kategori`);
+    return;
+  }
+  if (typeof v['id'] !== 'string' || v['id'].length === 0) errors.push(`${path}: id hilang`);
+  if (typeof v['name'] !== 'string' || v['name'].trim().length === 0 || v['name'].trim().length > 60) {
+    errors.push(`${path}: name tak valid`);
+  }
+  if (typeof v['price'] !== 'number' || !Number.isFinite(v['price'] as number) || (v['price'] as number) < 0 || (v['price'] as number) > 100_000_000) {
+    errors.push(`${path}: price tak valid`);
+  }
+  if (typeof v['color'] !== 'string' || !/^(#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$/.test(v['color'])) {
+    errors.push(`${path}: color tak valid`);
+  }
 }
 
 function checkObject(o: unknown, path: string, errors: string[]): void {
@@ -63,6 +82,9 @@ function checkObject(o: unknown, path: string, errors: string[]): void {
     const closedOk = kind === 'section' ? v['closed'] === true && n >= 3 : kind === 'vector' ? typeof v['d'] === 'string' && /[Zz]/.test(v['d'] as string) : false;
     if ((kind !== 'section' && kind !== 'vector') || !closedOk || (Array.isArray(seats) && seats.length > 0)) {
       errors.push(`${path}: isSection tak valid untuk kind ${kind} (hanya polygon/vector tertutup tanpa kursi)`);
+    }
+    if (v['categoryId'] !== undefined && v['categoryId'] !== null && typeof v['categoryId'] !== 'string') {
+      errors.push(`${path}: categoryId tak valid`);
     }
   }
   if (v['rowParams'] !== null && v['rowParams'] !== undefined) {
@@ -130,6 +152,24 @@ export function validateVenueDoc(doc: unknown): { ok: boolean; errors: string[] 
   } else {
     (v['objects'] as unknown[]).forEach((o, i) => checkObject(o, `objects[${i}]`, errors));
   }
+  // categories opsional di dokumen lama (migrasi mengisinya); bila ada wajib valid.
+  if (v['categories'] !== undefined) {
+    if (!Array.isArray(v['categories'])) {
+      errors.push('categories bukan array');
+    } else {
+      (v['categories'] as unknown[]).forEach((c, i) => checkCategory(c, `categories[${i}]`, errors));
+      const ids = (v['categories'] as TicketCategory[]).map((c) => (c as TicketCategory)?.id);
+      if (new Set(ids).size !== ids.length) errors.push('categories: id duplikat');
+    }
+  }
+  if (Array.isArray(v['categories']) && Array.isArray(v['objects'])) {
+    const ids = new Set((v['categories'] as TicketCategory[]).map((c) => c.id));
+    (v['objects'] as VenueObject[]).forEach((o, i) => {
+      if (o.isSection && o.categoryId != null && !ids.has(o.categoryId)) {
+        errors.push(`objects[${i}]: categoryId menunjuk kategori yang hilang`);
+      }
+    });
+  }
   return { ok: errors.length === 0, errors };
 }
 
@@ -148,7 +188,9 @@ export function parseVenueJson(text: string): { doc: VenueDoc | null; errors: st
   }
   const v = validateVenueDoc(raw);
   if (!v.ok) return { doc: null, errors: v.errors };
-  return { doc: raw as VenueDoc, errors: [] };
+  // Migrasi: dokumen lama tanpa categories langsung dilengkapi + harga disinkron.
+  const migrated = ensureCategories(raw as VenueDoc);
+  return { doc: migrated, errors: [] };
 }
 
 export type { Seat, VenueObject };
