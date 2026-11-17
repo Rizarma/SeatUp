@@ -146,8 +146,7 @@ export default function SidePanel(p: Props) {
               <SeatSelectionEditor key={selectedSeatIds.join(',')} />
             ) : (
               <>
-                {tool !== 'select' && tool !== 'seat' && <ToolOptions p={p} f={f} tool={tool} />}
-                {tool === 'seat' && <ToolOptions p={p} f={f} tool={tool} />}
+                {tool !== 'select' && <ToolOptions p={p} f={f} tool={tool} />}
                 {tool === 'select' && selected && <ObjectProps p={p} selected={selected} markOk={mark.ok} markReason={mark.reason} onRequestDelete={(id) => setPendingDeleteId(id)} />}
                 {tool === 'select' && !selected && !p.focusId && (
                   <div className="empty empty--props">
@@ -313,11 +312,56 @@ export default function SidePanel(p: Props) {
   );
 }
 
+function ToolShell({ icon, title, sub, children, label }: {
+  icon: React.ComponentType<{ size?: number | string; strokeWidth?: number | string }>;
+  title: string; sub: string; children: React.ReactNode; label?: string;
+}) {
+  return (
+    <div className="object-properties tool-options" aria-label={label ?? title}>
+      <CtxHead icon={icon as never} title={title} sub={sub} />
+      {children}
+    </div>
+  );
+}
+
+function ToolSteps({ items }: { items: string[] }) {
+  return (
+    <ol className="tool-steps">
+      {items.map((s) => <li key={s}>{s}</li>)}
+    </ol>
+  );
+}
+
 function ToolOptions({ p, f, tool }: { p: Props; f: RowForm; tool: string }) {
   const { state } = useStore();
-  if (tool === 'hand') return <CtxHead icon={Hand} title="Geser kanvas" sub="Seret di mana saja untuk menggeser tampilan. Scroll untuk zoom." />;
+  if (tool === 'hand') {
+    return (
+      <ToolShell icon={Hand} title="Geser kanvas" sub="Navigasi tampilan, bukan menggambar">
+        <div className="object-config-group">
+          <h4 className="subh">Cara pakai</h4>
+          <ToolSteps items={[
+            'Seret di mana saja untuk menggeser tampilan',
+            'Scroll untuk zoom in / out',
+            'Tekan V untuk kembali ke Select',
+          ]} />
+        </div>
+      </ToolShell>
+    );
+  }
   if (tool === 'seat') {
-    return <CtxHead icon={Armchair} title="Pilih kursi" sub="Klik pilih · Shift/Cmd/Ctrl multi · seret marquee" />;
+    return (
+      <ToolShell icon={Armchair} title="Pilih kursi" sub="Klik pilih · Shift/Cmd/Ctrl multi · seret marquee">
+        <div className="object-config-group">
+          <h4 className="subh">Cara pakai</h4>
+          <ToolSteps items={[
+            'Klik 1 kursi untuk memilih',
+            'Shift / Cmd / Ctrl + klik untuk multi-pilih',
+            'Seret marquee untuk memilih blok sekaligus',
+          ]} />
+          <p className="muted">Tekan Delete untuk hapus kursi saja (objek baris tetap). Batal via tombol di banner atas kanvas.</p>
+        </div>
+      </ToolShell>
+    );
   }
   if (tool === 'row') {
     const targetId = p.focusId ?? p.sectionId ?? null;
@@ -327,72 +371,141 @@ function ToolOptions({ p, f, tool }: { p: Props; f: RowForm; tool: string }) {
     const hasTarget = !!targetId;
     const cat = targetId ? categoryById(state.doc, state.doc.objects.find((o) => o.id === targetId)?.categoryId) : null;
     return (
-      <>
-        <CtxHead icon={Armchair} title="Buat baris kursi" sub={hasTarget && targetLabel ? targetLabel : 'Masuk ke section dulu'} />
-        {!hasTarget && (
-          <p className="muted">Masuk ke section dulu (klik dua kali section di kanvas) — baris hanya bisa dibuat di dalam section fokus.</p>
-        )}
-        <label className="fld"><span>Mode</span>
-          <select value={f.mode} onChange={(e) => p.setRowForm({ ...f, mode: e.target.value as 'straight' | 'arc' })}>
-            <option value="straight">Lurus</option>
-            <option value="arc">Melengkung (busur)</option>
-          </select>
-        </label>
-        <Num label="Jml baris" value={f.rows} onChange={(v) => p.setRowForm({ ...f, rows: v })} min={1} max={60} />
-        <Num label="Kursi/baris" value={f.seatsPerRow} onChange={(v) => p.setRowForm({ ...f, seatsPerRow: v })} min={1} max={200} />
-        <Num label="Jarak kursi" value={f.seatGap} onChange={(v) => p.setRowForm({ ...f, seatGap: v })} min={8} max={120} />
-        <Num label="Jarak baris" value={f.rowGap} onChange={(v) => p.setRowForm({ ...f, rowGap: v })} min={8} max={160} />
-        {f.mode === 'straight'
-          ? <Num label="Sudut (°)" value={f.angleDeg} onChange={(v) => p.setRowForm({ ...f, angleDeg: v })} min={-180} max={180} />
-          : <Num label="Radius (px)" value={f.radius} onChange={(v) => p.setRowForm({ ...f, radius: v })} min={20} max={1000} />}
-        {f.mode === 'arc' && <Num label="Bentang (°)" value={f.spanDeg} onChange={(v) => p.setRowForm({ ...f, spanDeg: v })} min={5} max={360} />}
-        {f.mode === 'arc' && <Num label="Sudut awal (°)" value={f.startDeg} onChange={(v) => p.setRowForm({ ...f, startDeg: v })} min={-180} max={360} />}
-        <Num label="Offset label" value={f.rowLabelOffset} onChange={(v) => p.setRowForm({ ...f, rowLabelOffset: v })} min={0} max={25} />
-        {cat ? (
-          <p className="muted">
-            <i aria-hidden="true" style={{ background: cat.color, width: 12, height: 12, borderRadius: '50%', display: 'inline-block', marginRight: 6, verticalAlign: -1 }} />
-            Harga ngikut kategori: <strong>{cat.name}</strong> · Rp{cat.price.toLocaleString('id-ID')}. Ubah di tab Kategori.
-          </p>
-        ) : (
-          <p className="muted">Harga ngikut kategori section aktif. Atur di tab Kategori.</p>
-        )}
-        {p.anchor && <p className="muted">Jangkar: {p.anchor[0]}, {p.anchor[1]}.</p>}
-        {p.validCount !== null && (p.focusId ?? p.sectionId) && (
-          <p className="muted">{p.validCount} kandidat valid (footprint penuh di dalam) · {p.rejectedCount} ditolak (keluar/lubang/lorong).</p>
-        )}
-      </>
+      <ToolShell icon={Armchair} title="Buat baris kursi" sub={hasTarget && targetLabel ? targetLabel : 'Masuk ke section dulu'} label="Buat baris kursi">
+        <div className="object-config-group">
+          <h4 className="subh">Target section</h4>
+          {!hasTarget ? (
+            <p className="tool-warn">Masuk ke section dulu (klik dua kali section di kanvas) — baris hanya bisa dibuat di dalam section fokus.</p>
+          ) : (
+            <>
+              <p className="tool-target">
+                <span className="badge b-blue">Section</span>
+                <strong>{targetLabel}</strong>
+              </p>
+              {cat ? (
+                <p className="muted tool-cat">
+                  <i aria-hidden="true" style={{ background: cat.color, width: 12, height: 12, borderRadius: '50%', display: 'inline-block', marginRight: 6, verticalAlign: -1 }} />
+                  Harga ngikut kategori: <strong>{cat.name}</strong> · Rp{cat.price.toLocaleString('id-ID')}. Ubah di tab Kategori.
+                </p>
+              ) : (
+                <p className="muted">Harga ngikut kategori section aktif. Atur di tab Kategori.</p>
+              )}
+            </>
+          )}
+        </div>
+        <div className="object-config-group">
+          <h4 className="subh">Tata letak</h4>
+          <label className="fld"><span>Mode</span>
+            <select value={f.mode} onChange={(e) => p.setRowForm({ ...f, mode: e.target.value as 'straight' | 'arc' })}>
+              <option value="straight">Lurus</option>
+              <option value="arc">Melengkung (busur)</option>
+            </select>
+          </label>
+          <div className="frow">
+            <Num label="Jml baris" value={f.rows} onChange={(v) => p.setRowForm({ ...f, rows: v })} min={1} max={60} />
+            <Num label="Kursi/baris" value={f.seatsPerRow} onChange={(v) => p.setRowForm({ ...f, seatsPerRow: v })} min={1} max={200} />
+          </div>
+          <div className="frow">
+            <Num label="Jarak kursi" value={f.seatGap} onChange={(v) => p.setRowForm({ ...f, seatGap: v })} min={8} max={120} />
+            <Num label="Jarak baris" value={f.rowGap} onChange={(v) => p.setRowForm({ ...f, rowGap: v })} min={8} max={160} />
+          </div>
+        </div>
+        <div className="object-config-group">
+          <h4 className="subh">{f.mode === 'straight' ? 'Arah baris' : 'Bentuk busur'}</h4>
+          {f.mode === 'straight'
+            ? <Num label="Sudut (°)" value={f.angleDeg} onChange={(v) => p.setRowForm({ ...f, angleDeg: v })} min={-180} max={180} />
+            : (
+              <>
+                <Num label="Radius (px)" value={f.radius} onChange={(v) => p.setRowForm({ ...f, radius: v })} min={20} max={1000} />
+                <div className="frow">
+                  <Num label="Bentang (°)" value={f.spanDeg} onChange={(v) => p.setRowForm({ ...f, spanDeg: v })} min={5} max={360} />
+                  <Num label="Sudut awal (°)" value={f.startDeg} onChange={(v) => p.setRowForm({ ...f, startDeg: v })} min={-180} max={360} />
+                </div>
+              </>
+            )}
+          <Num label="Offset label" value={f.rowLabelOffset} onChange={(v) => p.setRowForm({ ...f, rowLabelOffset: v })} min={0} max={25} />
+        </div>
+        <div className="object-config-group">
+          <h4 className="subh">Status draf</h4>
+          {p.anchor
+            ? <p className="muted">Jangkar: {p.anchor[0]}, {p.anchor[1]}. Klik kanvas untuk pindah, seret untuk blok lurus.</p>
+            : <p className="muted">Belum ada jangkar — klik kanvas untuk pasang jangkar, atau seret untuk blok lurus.</p>}
+          {p.validCount !== null && (p.focusId ?? p.sectionId) && (
+            <p className="tool-stat">{p.validCount} kandidat valid (footprint penuh di dalam) · {p.rejectedCount} ditolak (keluar/lubang/lorong).</p>
+          )}
+        </div>
+      </ToolShell>
     );
   }
   if (tool === 'polygon') {
     return (
-      <>
-        <CtxHead icon={PenTool} title="Gambar polygon" sub="Klik tambah titik · Enter/klik-ganda tutup · Esc batal" />
-        <p className="muted">Setelah tertutup, tandai areanya sebagai section agar bisa diisi kursi. Draf tersimpan saat ganti tool.</p>
-      </>
+      <ToolShell icon={PenTool} title="Gambar polygon" sub="Klik tambah titik · Enter/klik-ganda tutup · Esc batal">
+        <div className="object-config-group">
+          <h4 className="subh">Cara pakai</h4>
+          <ToolSteps items={[
+            'Klik kanvas untuk tambah titik sudut',
+            'Enter atau klik-ganda titik awal untuk menutup',
+            'Esc untuk batalkan draf aktif',
+          ]} />
+        </div>
+        <div className="object-config-group">
+          <h4 className="subh">Setelah tertutup</h4>
+          <p className="muted">Tandai areanya sebagai section agar bisa diisi kursi. Draf tersimpan saat ganti tool.</p>
+        </div>
+      </ToolShell>
     );
   }
   if (tool === 'rectangle' || tool === 'circle') {
+    const isCircle = tool === 'circle';
     return (
-      <>
-        <CtxHead icon={tool === 'circle' ? Circle : Square} title={tool === 'circle' ? 'Buat lingkaran' : 'Buat kotak'} sub={tool === 'circle' ? 'Seret diameter di kanvas' : 'Seret kotak di kanvas'} />
-        <p className="muted">Setelah dibuat, pilih objek untuk menggeser atau mengubah ukurannya. Tandai sebagai section jika ingin diisi kursi.</p>
-      </>
+      <ToolShell icon={isCircle ? Circle : Square} title={isCircle ? 'Buat lingkaran' : 'Buat kotak'} sub={isCircle ? 'Seret diameter di kanvas' : 'Seret kotak di kanvas'}>
+        <div className="object-config-group">
+          <h4 className="subh">Cara pakai</h4>
+          <ToolSteps items={[
+            isCircle ? 'Seret di kanvas untuk diameter lingkaran' : 'Seret di kanvas untuk ukuran kotak',
+            'Lepas untuk membuat bentuk',
+            'Pilih objek untuk menggeser atau mengubah ukurannya',
+          ]} />
+        </div>
+        <div className="object-config-group">
+          <h4 className="subh">Setelah dibuat</h4>
+          <p className="muted">Tandai sebagai section jika ingin diisi kursi.</p>
+        </div>
+      </ToolShell>
     );
   }
   if (tool === 'stage') {
     return (
-      <>
-        <CtxHead icon={Podium} title="Buat panggung" sub="Seret kotak di kanvas" />
-        <p className="muted">Panggung adalah dekorasi peta (bukan section): kursi tidak bisa dibuat di dalamnya.</p>
-      </>
+      <ToolShell icon={Podium} title="Buat panggung" sub="Seret kotak di kanvas">
+        <div className="object-config-group">
+          <h4 className="subh">Cara pakai</h4>
+          <ToolSteps items={[
+            'Seret kotak di kanvas untuk ukuran panggung',
+            'Lepas untuk membuat panggung',
+          ]} />
+        </div>
+        <div className="object-config-group">
+          <h4 className="subh">Catatan</h4>
+          <p className="muted">Panggung adalah dekorasi peta (bukan section): kursi tidak bisa dibuat di dalamnya.</p>
+        </div>
+      </ToolShell>
     );
   }
   return (
-    <>
-      <CtxHead icon={Footprints} title="Buat lorong" sub="Seret garis di kanvas" />
-      <Num label="Lebar lorong (px)" value={p.aisleWidth} onChange={p.setAisleWidth} min={4} max={120} />
-      <p className="muted">Lorong memotong area jalan; kursi yang footprint-nya menyentuh lorong tidak dihitung valid.</p>
-    </>
+    <ToolShell icon={Footprints} title="Buat lorong" sub="Seret garis di kanvas">
+      <div className="object-config-group">
+        <h4 className="subh">Lebar lorong</h4>
+        <Num label="Lebar lorong (px)" value={p.aisleWidth} onChange={p.setAisleWidth} min={4} max={120} />
+      </div>
+      <div className="object-config-group">
+        <h4 className="subh">Cara pakai</h4>
+        <ToolSteps items={[
+          'Seret garis di kanvas untuk jalur lorong',
+          'Lepas untuk membuat lorong',
+        ]} />
+        <p className="muted">Lorong memotong area jalan; kursi yang footprint-nya menyentuh lorong tidak dihitung valid.</p>
+      </div>
+    </ToolShell>
   );
 }
 
@@ -545,20 +658,25 @@ function FocusSectionLayout({ focusId, onEnterSection }: { focusId: string; onEn
     ? doc.objects.flatMap((o) => o.seats).filter((s) => s.sectionId === focusId).length
     : target.seats.length;
   return (
-    <section aria-label="Susunan kursi section aktif">
+    <section className="focus-section" aria-label="Susunan kursi section aktif">
       <h4 className="subh">Susunan kursi · {active.label}</h4>
-      {rowInFocus
-        ? <p className="muted">Target: {rowInFocus.label} ({targetCount} kursi). Pilih objek lain untuk mengatur seluruh section.</p>
-        : <p className="muted">Target: seluruh section ({targetCount} kursi). Pilih kelompok baris section ini untuk mengatur satu kelompok saja.</p>}
-      {(foreignOwner || foreignSection) && (
-        <div className="row">
-          <button onClick={() => onEnterSection((foreignOwner ?? foreignSection!)!.id)}>
-            Masuk ke {(foreignOwner ?? foreignSection!)!.label}
-          </button>
-        </div>
+      <p className="tool-target">
+        <span className="badge b-blue">{rowInFocus ? 'Kelompok baris' : 'Seluruh section'}</span>
+        <strong>{rowInFocus ? rowInFocus.label : active.label}</strong>
+        <span className="muted">· {targetCount} kursi</span>
+      </p>
+      {!rowInFocus && (
+        <p className="muted">Pilih kelompok baris section ini untuk mengatur satu kelompok saja.</p>
       )}
       {(foreignOwner || foreignSection) && (
-        <p className="muted">Pilihan dari section lain tidak ikut diubah di sini.</p>
+        <>
+          <div className="row">
+            <button onClick={() => onEnterSection((foreignOwner ?? foreignSection!)!.id)}>
+              Masuk ke {(foreignOwner ?? foreignSection!)!.label}
+            </button>
+          </div>
+          <p className="muted">Pilihan dari section lain tidak ikut diubah di sini.</p>
+        </>
       )}
       <SeatLayoutControls key={target.id} target={target} />
     </section>
