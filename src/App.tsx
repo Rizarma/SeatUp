@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, Armchair, Hand, Circle, MousePointerClick, Podium, Footprints, Download, Eye, FolderOpen, MousePointer2, PanelRight, PencilRuler, Pentagon,
-  Redo2, Save, Square, Trash2, Undo2, Upload,
+  Redo2, Rows3, Save, Square, Trash2, Undo2, Upload,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { GenSeat, Pt, RowParams, VenueObject } from './lib/venue';
@@ -31,7 +31,8 @@ const TOOLS: { id: Tool; label: string; hint: string; Icon: LucideIcon; shortcut
   { id: 'rectangle', label: 'Rectangle', hint: 'Buat rectangle (seret di kanvas)', Icon: Square },
   { id: 'circle', label: 'Circle', hint: 'Buat circle (seret diameter di kanvas)', Icon: Circle },
   { id: 'seat', label: 'Pilih kursi', hint: 'Klik pilih kursi · Shift/Cmd/Ctrl multi · seret marquee', Icon: MousePointerClick },
-  { id: 'row', label: 'Baris kursi', hint: 'Buat baris kursi', Icon: Armchair },
+  { id: 'row', label: 'Baris kursi', hint: 'Buat 1 baris (klik – gerak – klik)', Icon: Armchair },
+  { id: 'multirow', label: 'Blok baris', hint: 'Buat banyak baris sekaligus (klik – gerak – klik)', Icon: Rows3 },
 ];
 
 // Urutan + separator dock: [select, hand] | [stage, lorong] | [polygon, rectangle, circle]
@@ -42,7 +43,7 @@ const DOCK_GROUPS_VENUE: Tool[][] = [
 ];
 const DOCK_GROUPS_FOCUS: Tool[][] = [
   ['select', 'hand'],
-  ['seat', 'row'],
+  ['seat', 'row', 'multirow'],
 ];
 
 // Fokus yang menempel di tombol dock membuat outline :focus-visible + tooltip
@@ -57,14 +58,22 @@ const DEFAULT_ROWFORM: RowForm = {
   angleDeg: 0, radius: 230, spanDeg: 140, startDeg: 20, rowLabelOffset: 0,
 };
 
-/** Preview baris tunggal ala seats.io: titik awal → ujung kursor, ke kiri/kanan. */
-function buildSingleRow(start: Pt, end: Pt, form: RowParams, scale: number) {
-  const step = Math.max(8, Number.isFinite(form.seatGap) ? form.seatGap : 26) * scale;
-  const count = Math.min(200, Math.floor(Math.abs(end[0] - start[0]) / step) + 1);
-  const raw = straightSeats(start, 0, 1, count, step, form.rowGap * scale, form.rowLabelOffset);
-  const dir = end[0] < start[0] ? -1 : 1;
-  const seats = dir < 0 ? raw.map((s) => ({ ...s, x: start[0] - (s.x - start[0]) })) : raw;
-  return { seats, count, step };
+/** Preview baris ala seats.io: titik awal → ujung kursor, ke kiri/kanan.
+ *  Multi: gerak vertikal menambah baris (atas/bawah). Selalu lurus. */
+function buildRowBlock(start: Pt, end: Pt, form: RowParams, scale: number, multi: boolean) {
+  const stepX = Math.max(8, Number.isFinite(form.seatGap) ? form.seatGap : 26) * scale;
+  const stepY = Math.max(8, Number.isFinite(form.rowGap) ? form.rowGap : 34) * scale;
+  const count = Math.min(200, Math.floor(Math.abs(end[0] - start[0]) / stepX) + 1);
+  const rows = multi ? Math.min(60, Math.floor(Math.abs(end[1] - start[1]) / stepY) + 1) : 1;
+  const raw = straightSeats(start, 0, rows, count, stepX, stepY, form.rowLabelOffset);
+  const dirX = end[0] < start[0] ? -1 : 1;
+  const dirY = end[1] < start[1] ? -1 : 1;
+  const seats = raw.map((s) => ({
+    ...s,
+    x: dirX < 0 ? start[0] - (s.x - start[0]) : s.x,
+    y: dirY < 0 ? start[1] - (s.y - start[1]) : s.y,
+  }));
+  return { seats, count, rows };
 }
 
 function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
@@ -126,14 +135,14 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
   };
   const leaveSection = () => { setFocusId(null); cancelRowDrag(); select(null); selectSeats([]); setTool('select'); };
 
-  // Baris tunggal: klik pertama = titik awal, gerak kursor = preview,
-  // klik kedua / lepas-seret = commit. Selalu lurus horizontal.
-  const singlePreview = useMemo(() => {
+  // Baris ala seats.io: klik pertama = titik awal, gerak kursor = preview,
+  // klik kedua / lepas-seret = commit. Multi: vertikal menambah baris.
+  const rowPreview = useMemo(() => {
     if (!anchor) return null;
     const end = rowDrag?.end ?? rowCursor ?? anchor;
-    return buildSingleRow(anchor, end, rowForm, placementScale);
-  }, [anchor, rowDrag, rowCursor, rowForm, placementScale]);
-  const genSeats = useMemo(() => singlePreview?.seats ?? [], [singlePreview]);
+    return buildRowBlock(anchor, end, rowForm, placementScale, tool === 'multirow');
+  }, [anchor, rowDrag, rowCursor, rowForm, placementScale, tool]);
+  const genSeats = useMemo(() => rowPreview?.seats ?? [], [rowPreview]);
 
   const ghosts = useMemo(() => {
     if (!anchor) return null;
@@ -174,15 +183,15 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
     setAnchor(null);
   };
 
-  const commitSingleRow = (start: Pt, end: Pt) => {
-    const { seats, count, step } = buildSingleRow(start, end, rowForm, placementScale);
+  const commitRowBlock = (start: Pt, end: Pt, multi: boolean) => {
+    const { seats, count, rows } = buildRowBlock(start, end, rowForm, placementScale, multi);
     commitSeats(seats, start, {
-      ...rowForm, mode: 'straight', rows: 1, seatsPerRow: count, angleDeg: 0,
-      seatGap: step, rowGap: rowForm.rowGap * placementScale,
+      ...rowForm, mode: 'straight', rows: multi ? rows : 1, seatsPerRow: count, angleDeg: 0,
+      seatGap: Math.max(8, rowForm.seatGap) * placementScale, rowGap: rowForm.rowGap * placementScale,
     });
   };
   const releaseRowDrag = (start: Pt, end: Pt) => {
-    commitSingleRow(start, end);
+    commitRowBlock(start, end, tool === 'multirow');
     cancelRowDrag();
   };
   const handleRowDrag = (start: Pt, end: Pt) => {
@@ -196,7 +205,7 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
   };
   const handleTapCommit = (end: Pt) => {
     if (!anchor) return;
-    commitSingleRow(anchor, end);
+    commitRowBlock(anchor, end, tool === 'multirow');
     cancelRowDrag();
   };
 
@@ -345,9 +354,9 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
           </>
         </div>
         )}
-        {rowDrag && singlePreview && <div className="seat-drag-summary" role="status">
-          {singlePreview.count} kursi · {validCount} valid · {rejectedCount} ditolak
-          <span>Lepaskan untuk membuat baris · Esc untuk batal</span>
+        {rowDrag && rowPreview && <div className="seat-drag-summary" role="status">
+          {tool === 'multirow' ? `${rowPreview.rows} baris × ${rowPreview.count} kursi` : `${rowPreview.count} kursi`} · {validCount} valid · {rejectedCount} ditolak
+          <span>Lepaskan untuk membuat {tool === 'multirow' ? 'blok' : 'baris'} · Esc untuk batal</span>
         </div>}
         <EditorCanvas hoveredObjectId={hoveredObjectId} onRowDrag={handleRowDrag} onRowRelease={releaseRowDrag} onRowHover={handleRowHover} onRowTapCommit={handleTapCommit} onCancelRowDrag={cancelRowDrag} rowDrag={rowDrag} focusId={activeFocusId} onFocusSection={enterSection} seatRadius={8 * placementScale} anchor={anchor} onAnchor={setAnchor} showBg={showBg} ghosts={ghosts} aisleWidth={aisleWidth} />
         <div className="dock" role="toolbar" aria-label="Alat editor">
@@ -388,6 +397,7 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
         sections={activeFocusId ? sections.filter(s => s.id === activeFocusId) : sections} sectionId={effSectionId} setSectionId={() => {}} focusId={activeFocusId} onEnterSection={enterSection}
         validCount={anchor ? validCount : null} rejectedCount={anchor ? rejectedCount : null}
         previewCount={anchor ? genSeats.length : null}
+        previewRows={anchor ? rowPreview?.rows ?? null : null}
         onMarkSection={() => {
           if (!selectedObj) return;
           if (!markEligibility(selectedObj).ok) return;

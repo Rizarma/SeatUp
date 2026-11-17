@@ -4,7 +4,7 @@ import { emptyVenue, normalizeSectionFlags } from './lib/venue';
 import { ensureCategories, syncCategoryPrices } from './lib/categories';
 import { revalidateSeats } from './lib/contain';
 
-export type Tool = 'hand' | 'select' | 'seat' | 'polygon' | 'stage' | 'rectangle' | 'circle' | 'aisle' | 'row';
+export type Tool = 'hand' | 'select' | 'seat' | 'polygon' | 'stage' | 'rectangle' | 'circle' | 'aisle' | 'row' | 'multirow';
 
 interface State {
   doc: VenueDoc;

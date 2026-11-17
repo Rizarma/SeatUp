@@ -41,6 +41,7 @@ interface Props {
   validCount: number | null;
   rejectedCount: number | null;
   previewCount: number | null;
+  previewRows: number | null;
   onMarkSection: () => void;
   onUnmarkSection: () => void;
   onPurgeInvalid: () => void;
@@ -381,7 +382,9 @@ function SectionProps({ p, f, tool, selected, onRequestDelete }: {
       {selectedSeatIds.length > 0 ? (
         <SeatSelectionEditor key={selectedSeatIds.join(',')} />
       ) : tool === 'row' ? (
-        <SectionRowPanel p={p} f={f} active={active} />
+        <SectionRowPanel p={p} f={f} active={active} multi={false} />
+      ) : tool === 'multirow' ? (
+        <SectionRowPanel p={p} f={f} active={active} multi />
       ) : tool === 'seat' ? (
         <ToolShell icon={Armchair} title="Pilih kursi" sub="Klik = sebaris · 2x klik = 1 kursi · Shift multi">
           <div className="object-config-group">
@@ -436,11 +439,16 @@ function SectionProps({ p, f, tool, selected, onRequestDelete }: {
   );
 }
 
-function SectionRowPanel({ p, f, active }: { p: Props; f: RowForm; active: VenueObject }) {
+function SectionRowPanel({ p, f, active, multi }: { p: Props; f: RowForm; active: VenueObject; multi: boolean }) {
   const { state } = useStore();
   const cat = active.categoryId ? categoryById(state.doc, active.categoryId) : null;
   return (
-    <ToolShell icon={Armchair} title="Buat baris kursi" sub="Satu baris · klik – gerak – klik" label="Buat baris kursi">
+    <ToolShell
+      icon={Armchair}
+      title={multi ? 'Buat blok baris' : 'Buat baris kursi'}
+      sub={multi ? 'Banyak baris · klik – gerak – klik' : 'Satu baris · klik – gerak – klik'}
+      label={multi ? 'Buat blok baris' : 'Buat baris kursi'}
+    >
       <div className="object-config-group">
         <h4 className="subh">1 · Target</h4>
         <p className="tool-target">
@@ -465,7 +473,11 @@ function SectionRowPanel({ p, f, active }: { p: Props; f: RowForm; active: Venue
       </div>
       <div className="object-config-group">
         <h4 className="subh">3 · Cara buat</h4>
-        <ToolSteps items={[
+        <ToolSteps items={multi ? [
+          'Klik kanvas untuk titik awal blok',
+          'Gerakkan ke kanan/kiri untuk jumlah kursi, ke atas/bawah untuk jumlah baris',
+          'Klik lagi untuk menyimpan blok',
+        ] : [
           'Klik kanvas untuk titik awal baris',
           'Gerakkan kursor ke kiri / kanan — preview mengikuti',
           'Klik lagi untuk menyimpan baris',
@@ -476,7 +488,9 @@ function SectionRowPanel({ p, f, active }: { p: Props; f: RowForm; active: Venue
           <>
             <p className="muted">Jangkar: {p.anchor[0]}, {p.anchor[1]}. Klik lagi untuk simpan, seret untuk gambar langsung, Esc untuk batal.</p>
             {p.previewCount !== null && (
-              <p className="tool-stat">{p.previewCount} kursi · {p.validCount} valid{p.rejectedCount ? ` · ${p.rejectedCount} ditolak` : ''}.</p>
+              <p className="tool-stat">
+                {multi && p.previewRows !== null ? `${p.previewRows} baris × ${p.previewCount} kursi` : `${p.previewCount} kursi`} · {p.validCount} valid{p.rejectedCount ? ` · ${p.rejectedCount} ditolak` : ''}.
+              </p>
             )}
           </>
         )}

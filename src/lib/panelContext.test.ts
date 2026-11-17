@@ -4,6 +4,7 @@ import { resolveContext, markEligibility } from './panelContext';
 describe('resolveContext', () => {
   it('tool kreasi menang atas seleksi (state tidak hilang saat ganti tool)', () => {
     expect(resolveContext('row', true)).toBe('tool-row');
+    expect(resolveContext('multirow', true)).toBe('tool-row');
     expect(resolveContext('polygon', true)).toBe('tool-polygon');
     expect(resolveContext('stage', false)).toBe('tool-stage');
     expect(resolveContext('aisle', false)).toBe('tool-aisle');

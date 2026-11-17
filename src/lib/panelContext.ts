@@ -25,7 +25,7 @@ interface SelLike {
 
 /** Konteks panel: tool kreasi menang atas seleksi agar opsi tool selalu terlihat. */
 export function resolveContext(tool: string, hasSelection: boolean): PanelContext {
-  if (tool === 'row') return 'tool-row';
+  if (tool === 'row' || tool === 'multirow') return 'tool-row';
   if (tool === 'polygon') return 'tool-polygon';
   if (tool === 'rectangle' || tool === 'circle') return 'tool-shape';
   if (tool === 'stage') return 'tool-stage';

@@ -113,3 +113,45 @@ it('single row ala seats.io: klik pasang jangkar, hover preview, klik kedua comm
   expect(host.querySelector('.seat-drag-summary')).toBeNull();
   expect(host.textContent).not.toContain('Jangkar:');
 });
+
+it('multirow: gerak vertikal menambah baris, klik kedua commit blok', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ left:0, top:0, width:1200, height:800 } as DOMRect);
+  vi.spyOn(Element.prototype, 'setPointerCapture').mockImplementation(() => {});
+  vi.spyOn(Element.prototype, 'hasPointerCapture').mockReturnValue(false);
+  const host = document.createElement('div'); document.body.append(host);
+  const root = createRoot(host);
+  cleanup = () => { act(() => root.unmount()); host.remove(); vi.restoreAllMocks(); };
+  localStorage.setItem('seat-poc-venue-v1', JSON.stringify({ ...emptyVenue(), objects:[section] }));
+  await act(async () => root.render(<App />));
+  const click = async (selector: string) => act(async () => (host.querySelector(selector) as HTMLButtonElement).click());
+  await click('[aria-label="Muat simpanan lokal"]');
+  const svg0 = host.querySelector('svg.canvas')!;
+  await act(async () => { svg0.querySelector('polygon')!.dispatchEvent(new MouseEvent('dblclick', { bubbles:true })); });
+  expect(svg0.getAttribute('aria-label')).toBe('Editor isi section');
+  await click('[aria-label^="Blok baris"]');
+  const svg = host.querySelector('svg.canvas')!;
+  const pointer = async (type: string,x:number,y:number) => act(async () => { svg.dispatchEvent(new PointerEvent(type,{bubbles:true,clientX:x,clientY:y,button:0,pointerId:1})); });
+  const hover = async (x: number,y:number) => act(async () => { svg.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,clientX:x,clientY:y,button:0,pointerId:1})); });
+  const save = async () => { await click('[aria-label="Simpan lokal"]'); return JSON.parse(localStorage.getItem('seat-poc-venue-v1')!); };
+  // Klik pertama = jangkar, hover diagonal = preview blok (belum commit).
+  await pointer('pointerdown',120,120);
+  await pointer('pointerup',120,120);
+  expect(host.textContent).toContain('Jangkar:');
+  await hover(300,220);
+  expect((await save()).objects).toHaveLength(1);
+  // Klik kedua = commit blok: banyak baris (y bervariasi), tiap baris banyak kursi.
+  await pointer('pointerdown',300,220);
+  await pointer('pointerup',300,220);
+  const saved = await save();
+  expect(saved.objects).toHaveLength(2);
+  expect(saved.objects[1].kind).toBe('row-straight');
+  expect(saved.objects[1].sectionId).toBe(section.id);
+  const ys = new Set(saved.objects[1].seats.map((s: { y: number }) => s.y));
+  expect(ys.size).toBeGreaterThan(1);
+  expect(saved.objects[1].seats.length).toBeGreaterThan(ys.size);
+  // Undo menghapus blok.
+  await click('[aria-label^="Urungkan"]');
+  expect((await save()).objects).toHaveLength(1);
+});

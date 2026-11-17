@@ -253,7 +253,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       setDraft((d) => [...d, p]);
       return;
     }
-    if (tool === 'row') {
+    if (tool === 'row' || tool === 'multirow') {
       e.currentTarget.setPointerCapture(e.pointerId);
       const hadAnchor = anchor !== null;
       rowGesture.current = { start:p, clientX:e.clientX, clientY:e.clientY, pointerId:e.pointerId, dragged:false, hadAnchor };
@@ -303,8 +303,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       setSeatMarquee({ start: sg.start, end: p });
       return;
     }
-    // Hover preview baris tunggal: kursor tanpa tombol = ujung preview.
-    if (tool === 'row' && focusId && e.buttons === 0 && !scaleDrag && !rotateDrag && !drag && !ghost) {
+    // Hover preview baris/blok: kursor tanpa tombol = ujung preview.
+    if ((tool === 'row' || tool === 'multirow') && focusId && e.buttons === 0 && !scaleDrag && !rotateDrag && !drag && !ghost) {
       onRowHover(p);
     }
     if (ghost) {
@@ -973,7 +973,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         fill="rgba(29,78,216,0.08)" stroke="#1d4ed8" strokeWidth={1.5} vectorEffect="non-scaling-stroke"
         strokeDasharray="6 4" pointerEvents="none" />}
 
-      {tool === 'row' && anchor && ghosts && focusId && (
+      {(tool === 'row' || tool === 'multirow') && anchor && ghosts && focusId && (
         <g>
           <circle cx={anchor[0]} cy={anchor[1]} r={seatRadius * 1.125} fill="none" stroke="#16a34a" strokeWidth={2.5} />
           {ghostSeats.map((s, i) => (
