@@ -463,13 +463,12 @@ function Shell() {
             <button className="nbtn" onClick={redo} disabled={future.length === 0}
               aria-label={`Ulangi (${future.length})`} data-tip={`Ulangi (${future.length})`}>
               <Redo2 size={18} strokeWidth={2} aria-hidden="true" /></button>
-            <button className="nbtn danger" onClick={() => { if (doc.objects.length === 0 || confirm('Buang semua objek?')) loadDoc(emptyVenue()); }}
-              aria-label="Bersihkan semua objek" data-tip="Bersihkan">
-              <Trash2 size={18} strokeWidth={2} aria-hidden="true" /></button>
+            <span className="nsep" aria-hidden="true" />
             <button className="nbtn" onClick={doSave} aria-label="Simpan lokal" data-tip="Simpan lokal">
               <Save size={18} strokeWidth={2} aria-hidden="true" /></button>
             <button className="nbtn" onClick={doLoad} aria-label="Muat simpanan lokal" data-tip="Muat lokal">
               <FolderOpen size={18} strokeWidth={2} aria-hidden="true" /></button>
+            <span className="nsep" aria-hidden="true" />
             <button className="nbtn" onClick={doExport} aria-label="Ekspor JSON tervalidasi" data-tip="Ekspor JSON">
               <Download size={18} strokeWidth={2} aria-hidden="true" /></button>
             <label className="nbtn filelabel" aria-label="Buka project JSON" data-tip="Buka project JSON">
@@ -480,6 +479,10 @@ function Shell() {
                 e.target.value = '';
               }} />
             </label>
+            <span className="nsep" aria-hidden="true" />
+            <button className="nbtn danger" onClick={() => { if (doc.objects.length === 0 || confirm('Buang semua objek?')) loadDoc(emptyVenue()); }}
+              aria-label="Bersihkan semua objek" data-tip="Bersihkan">
+              <Trash2 size={18} strokeWidth={2} aria-hidden="true" /></button>
           </div>
         </div>
       </header>

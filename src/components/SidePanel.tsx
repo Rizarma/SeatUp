@@ -169,7 +169,7 @@ export default function SidePanel(p: Props) {
               <input value={queryRaw} placeholder="nama atau jenis…" onChange={(e) => { p.onHoverObject(null); setQueryRaw(e.target.value); }} />
             </label>
             {doc.objects.length === 0 && (
-              <p className="muted">Kanvas kosong. Gambar polygon, impor SVG via tab Dokumen, atau muat contoh venue.</p>
+              <p className="muted">Kanvas kosong. Gambar polygon atau impor SVG via tab Dokumen.</p>
             )}
             <ObjGroup title={`Section (${groupSections.length})`} openDefault>
               {groupSections.length === 0
@@ -185,6 +185,9 @@ export default function SidePanel(p: Props) {
                           <i aria-hidden="true" style={{ background: dot, width: 12, height: 12, borderRadius: '50%', flexShrink: 0, display: 'inline-block' }} />
                           {s.label} · {n.length} kursi{bad > 0 ? ` · ${bad} invalid` : ''}
                         </button>
+                        <button type="button" className="icon-btn danger" aria-label={`Hapus ${s.label}`} title={`Hapus ${s.label}`} onClick={() => setPendingDeleteId(s.id)}>
+                          <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
+                        </button>
                       </li>
                     );
                   })}
@@ -197,6 +200,9 @@ export default function SidePanel(p: Props) {
                     <button className={o.id === selectedId ? 'on' : ''} onClick={() => pickObject(o.id)}>
                       {o.label} · {o.seats.length} kursi{o.seats.some((s) => s.invalid) ? ` (${o.seats.filter((s) => s.invalid).length} invalid)` : ''}{p.focusId ? (o.sectionId === p.focusId || o.seats.some((s) => s.sectionId === p.focusId) ? ' · di section ini' : ` · ${doc.objects.find((s) => s.id === o.sectionId)?.label ?? 'lain'}`) : ''}
                     </button>
+                    <button type="button" className="icon-btn danger" aria-label={`Hapus ${o.label}`} title={`Hapus ${o.label}`} onClick={() => setPendingDeleteId(o.id)}>
+                      <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -208,25 +214,13 @@ export default function SidePanel(p: Props) {
                     <button className={o.id === selectedId ? 'on' : ''} onClick={() => pickObject(o.id)}>
                       {o.kind === 'import-draft' ? `draf:${o.guess ?? '?'}` : `${shapeName(o)}`} · {o.label}
                     </button>
+                    <button type="button" className="icon-btn danger" aria-label={`Hapus ${o.label}`} title={`Hapus ${o.label}`} onClick={() => setPendingDeleteId(o.id)}>
+                      <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
+                    </button>
                   </li>
                 ))}
               </ul>
             </ObjGroup>
-            {selected ? (
-              <div className="obj-danger-zone">
-                <p className="muted">Terpilih: <strong>{selected.label}</strong>{selected.seats.length > 0 ? ` · ${selected.seats.length} kursi ikut terhapus` : ''}</p>
-                <button
-                  type="button"
-                  className="danger danger-full"
-                  aria-label={`Hapus ${selected.label}`}
-                  onClick={() => setPendingDeleteId(selected.id)}
-                >
-                  <Trash2 size={15} strokeWidth={2} aria-hidden="true" />Hapus objek
-                </button>
-              </div>
-            ) : (
-              <p className="muted obj-danger-hint">Pilih objek dari daftar untuk melihat aksi hapus di sini.</p>
-            )}
           </>
         )}
 

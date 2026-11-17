@@ -501,18 +501,15 @@ label.btn.filepick input { max-width: 100%; }
 
 .objlist li { display:flex; align-items:center; gap:4px; min-width:0; }
 .objlist li > button:first-child { flex:1; min-width:0; overflow-wrap:anywhere; }
-/* Danger zone di bottom tab Objek: jauh dari daftar agar tak kepencet. */
-.obj-danger-zone {
-  margin-top: 16px; padding: 12px;
-  border: 1px solid #fecaca; background: #fef2f2; border-radius: 12px;
+/* Tombol hapus kecil per baris objek (override .objlist button yang full-width). */
+.objlist button.icon-btn {
+  flex: none; width: 32px; height: 32px; min-height: 0; min-width: 0; padding: 0;
+  display: inline-grid; place-items: center;
+  border-radius: 8px; border-color: transparent; background: transparent;
+  color: var(--muted); text-align: center; white-space: nowrap;
 }
-.obj-danger-zone .muted { margin: 0 0 10px; line-height: 1.5; }
-.obj-danger-zone .muted strong { color: var(--text); }
-.obj-danger-zone .danger-full {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  width: 100%; min-height: 40px; font-weight: 600; background: #fff;
-}
-.obj-danger-hint { margin: 16px 0 0; }
+.objlist button.icon-btn:hover { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+.objlist button.icon-btn svg { width: 15px; height: 15px; }
 /* Tombol Hapus di modal konfirmasi: solid merah. */
 .modal-card .danger-solid {
   background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 600;
