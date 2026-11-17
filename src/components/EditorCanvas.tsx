@@ -3,6 +3,7 @@ import { Plus, Minus, Maximize } from 'lucide-react';
 import type { Pt, VenueObject } from '../lib/venue';
 import { uid } from '../lib/venue';
 import { fitViewBox, toWorld, viewBoxStr } from '../lib/camera';
+import { getGridLevels, minorOpacity } from '../lib/grid';
 import type { ViewBox } from '../lib/camera';
 import { resolvedPoints, sectionGeomFor, shapeCenter, vectorCanvasCenter } from '../lib/contain';
 import { categoryColorForSection } from '../lib/categories';
@@ -501,6 +502,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
 
   const ptsStr = toPointsString;
 
+  // Infinite grid ala Miro: major tegas + minor berbayang, bertukar peran saat zoom.
+  // Level dihitung dari vb.w agar kerapatan layar selalu nyaman (~16..80px).
+  const grid = useMemo(() => getGridLevels(vb.w), [vb.w]);
+  const gridMinorOp = minorOpacity(grid.minorAlpha);
+
   return (
     <>
     <svg
@@ -533,12 +539,18 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     >
       <style>{`.canvas .lbl { font-size: ${Math.min(15, vb.w / 70)}px; }`}</style>
       <defs>
-        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e5e7eb" strokeWidth="1" />
+        <pattern id="grid-major" width={grid.major} height={grid.major} patternUnits="userSpaceOnUse">
+          <path d={`M ${grid.major} 0 L 0 0 0 ${grid.major}`} fill="none" stroke="#e5e7eb" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+        </pattern>
+        <pattern id="grid-minor" width={grid.minor} height={grid.minor} patternUnits="userSpaceOnUse">
+          <path d={`M ${grid.minor} 0 L 0 0 0 ${grid.minor}`} fill="none" stroke="#e5e7eb" strokeWidth="1" vectorEffect="non-scaling-stroke" strokeOpacity={gridMinorOp} />
         </pattern>
       </defs>
       <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} fill="#ffffff" />
-      <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} fill="url(#grid)" />
+      <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} fill="url(#grid-major)" />
+      {gridMinorOp > 0.02 && (
+        <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} fill="url(#grid-minor)" />
+      )}
       {!focusId && showBg && doc.backgroundImage && (
         <image href={doc.backgroundImage} x={0} y={0} width={doc.width} height={doc.height} opacity={0.45} preserveAspectRatio="none" />
       )}
