@@ -29,6 +29,9 @@ interface Props {
   rowDrag: { start: Pt; end: Pt } | null;
   onRowDrag: (start: Pt, end: Pt) => void;
   onRowRelease: (start: Pt, end: Pt) => void;
+  onRowHover: (p: Pt) => void;
+  /** Klik kedua (tanpa seret) saat jangkar sudah terpasang = simpan baris. */
+  onRowTapCommit: (end: Pt) => void;
   onCancelRowDrag: () => void;
   focusId: string | null;
   onFocusSection: (id: string) => void;
@@ -60,14 +63,14 @@ function translateObj(o: VenueObject, dx: number, dy: number): VenueObject {
   return moved;
 }
 
-export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRowRelease, onCancelRowDrag, focusId, onFocusSection, seatRadius, anchor, onAnchor, showBg, ghosts, aisleWidth }: Props) {
+export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRowRelease, onRowHover, onRowTapCommit, onCancelRowDrag, focusId, onFocusSection, seatRadius, anchor, onAnchor, showBg, ghosts, aisleWidth }: Props) {
   const { state, update, select, selectSeats, setTool } = useStore();
   const { doc, tool, selectedId, selectedSeatIds } = state;
   const selectedSeatSet = useMemo(() => new Set(selectedSeatIds), [selectedSeatIds]);
   const svgRef = useRef<SVGSVGElement>(null);
   const [canvasHoverId, setCanvasHoverId] = useState<string | null>(null);
   const [hoverSeatId, setHoverSeatId] = useState<string | null>(null);
-  const rowGesture = useRef<{ start: Pt; clientX: number; clientY: number; pointerId: number; dragged: boolean } | null>(null);
+  const rowGesture = useRef<{ start: Pt; clientX: number; clientY: number; pointerId: number; dragged: boolean; hadAnchor: boolean } | null>(null);
   useEffect(() => { rowGesture.current = null; seatGesture.current = null; setSeatMarquee(null); onCancelRowDrag(); setCanvasHoverId(null); setHoverSeatId(null); }, [tool, focusId, onCancelRowDrag]);
   const [draft, setDraft] = useState<Pt[]>([]);
   const [ghost, setGhost] = useState<Ghost | null>(null);
@@ -250,8 +253,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     }
     if (tool === 'row') {
       e.currentTarget.setPointerCapture(e.pointerId);
-      rowGesture.current = { start:p, clientX:e.clientX, clientY:e.clientY, pointerId:e.pointerId, dragged:false };
-      onAnchor(p);
+      const hadAnchor = anchor !== null;
+      rowGesture.current = { start:p, clientX:e.clientX, clientY:e.clientY, pointerId:e.pointerId, dragged:false, hadAnchor };
+      // Klik pertama memasang jangkar; klik berikutnya (ada jangkar) diurus
+      // saat pointerup: tap = commit, seret = mulai ulang dari titik tekan.
+      if (!hadAnchor) onAnchor(p);
       return;
     }
     if (tool === 'seat' && focusId) {
@@ -294,6 +300,10 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     if (sg && sg.pointerId === e.pointerId) {
       setSeatMarquee({ start: sg.start, end: p });
       return;
+    }
+    // Hover preview baris tunggal: kursor tanpa tombol = ujung preview.
+    if (tool === 'row' && focusId && e.buttons === 0 && !scaleDrag && !rotateDrag && !drag && !ghost) {
+      onRowHover(p);
     }
     if (ghost) {
       setGhost({ ...ghost, b: p });
@@ -366,6 +376,9 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       const end = toSvgCb(e);
       const moved = Math.hypot(e.clientX - gesture.clientX, e.clientY - gesture.clientY) >= 5;
       if (end && (gesture.dragged || moved)) onRowRelease(gesture.start, end);
+      else if (end && gesture.hadAnchor) onRowTapCommit(end);
+      // Tap pertama tanpa jangkar: jangkar sudah dipasang saat pointerdown,
+      // biarkan terpasang untuk preview hover.
       if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
       return;
     }

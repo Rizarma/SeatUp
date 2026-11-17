@@ -730,3 +730,29 @@ label.btn.filepick input { max-width: 100%; }
 }
 .cat-list button.icon-btn:hover { background: var(--bg); color: var(--text); border-color: var(--border); }
 .cat-list button.icon-btn.danger:hover { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+
+/* Section view editor: bar konteks fix di bawah tab + panel per tool.
+   Bar konteks di luar area scroll (bukan sticky) agar tak menimpa judul. */
+.section-contextbar {
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px;
+  background: #fff; border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+.section-contextbar .ctxtext { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+.section-contextbar .ctxtitle { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; font-weight: 700; line-height: 20px; min-width: 0; }
+.section-contextbar .ctxtitle .ell { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.section-contextbar .ctxsub { margin: 0; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; font-size: 12px; color: var(--muted); }
+.section-context-dot { width: 14px; height: 14px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgb(15 23 42 / 0.15); }
+.section-props { margin: 0 -16px -20px; min-width: 0; }
+.section-props > .object-properties,
+.section-props > .tool-options,
+.section-props > .seat-selection,
+.section-props > .focus-section { margin: 0; }
+.section-props > .focus-section { padding: 0 16px 16px; border-top: 0; }
+/* Jarak judul panel ke bar konteks: pbody sudah kasih 14px via padding. */
+.section-props > .object-properties > .ctxhead,
+.section-props > .tool-options > .ctxhead { padding-top: 2px; }
+.frow.single > .fld { grid-column: 1 / -1; }
+.seat-layout-controls > .fld:first-of-type { margin-top: 2px; }

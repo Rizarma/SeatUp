@@ -50,7 +50,7 @@ it('preserves 1000 compact seats and their footprint through validation and JSON
   expect(revalidateSeats([section,moved]).invalidCount).toBe(1);
 });
 
-it('previews a drag, creates only on release, supports undo, and preserves click creation', async () => {
+it('single row ala seats.io: klik pasang jangkar, hover preview, klik kedua commit, seret gambar-dan-selesai, Esc batal', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ left:0, top:0, width:1200, height:800 } as DOMRect);
@@ -70,33 +70,46 @@ it('previews a drag, creates only on release, supports undo, and preserves click
   await click('[aria-label^="Baris kursi"]');
   const svg = host.querySelector('svg.canvas')!;
   const pointer = async (type: string,x:number,y:number) => act(async () => { svg.dispatchEvent(new PointerEvent(type,{bubbles:true,clientX:x,clientY:y,button:0,pointerId:1})); });
+  const hover = async (x: number,y:number) => act(async () => { svg.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,clientX:x,clientY:y,button:0,pointerId:1})); });
   const save = async () => { await click('[aria-label="Simpan lokal"]'); return JSON.parse(localStorage.getItem('seat-poc-venue-v1')!); };
+  // 1. Klik pertama = pasang jangkar + 1 bullet, belum commit.
   await pointer('pointerdown',120,120);
-  await pointer('pointermove',198,188);
-  // Dalam fokus section kecil, skala kursi mengecil sehingga drag yang sama memuat lebih banyak baris/kursi.
-  expect(host.querySelector('.seat-drag-summary')!.textContent).toContain('6 baris × 8 kursi');
+  await pointer('pointerup',120,120);
   expect((await save()).objects).toHaveLength(1);
-  await pointer('pointerup',198,188);
-  const saved = await save();
-  expect(saved.objects[1].seats).toHaveLength(30);
+  expect(host.textContent).toContain('Jangkar:');
+  expect(host.querySelector('.seat-drag-summary')).toBeNull();
+  // 2. Hover ke kanan = preview membesar, tetap belum commit.
+  await hover(260,120);
+  expect((await save()).objects).toHaveLength(1);
+  // 3. Klik kedua = commit satu baris horizontal.
+  await pointer('pointerdown',260,120);
+  await pointer('pointerup',260,120);
+  let saved = await save();
+  expect(saved.objects).toHaveLength(2);
   expect(saved.objects[1].sectionId).toBe(section.id);
   expect(saved.objects[1].kind).toBe('row-straight');
+  expect(saved.objects[1].seats.length).toBeGreaterThan(1);
+  expect(new Set(saved.objects[1].seats.map((s: { y: number }) => s.y)).size).toBe(1);
+  // 4. Undo menghapus baris yang baru dibuat.
   await click('[aria-label^="Urungkan"]');
   expect((await save()).objects).toHaveLength(1);
-  await pointer('pointerdown',120,120);
-  await pointer('pointermove',198,188);
-  await act(async () => window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'})));
-  await pointer('pointerup',198,188);
-  expect((await save()).objects).toHaveLength(1);
-  expect(host.querySelector('.seat-drag-summary')).toBeNull();
-  await pointer('pointerdown',130,130);
-  await pointer('pointerup',130,130);
-  expect((await save()).objects).toHaveLength(1);
-  expect(host.querySelector('.seat-drag-summary')).toBeNull();
+  // 5. Seret = gambar-dan-selesai saat dilepas (satu baris).
+  await pointer('pointerdown',120,150);
+  await pointer('pointermove',198,150);
+  expect(host.querySelector('.seat-drag-summary')!.textContent).toContain('Lepaskan untuk membuat');
+  await pointer('pointerup',198,150);
+  saved = await save();
+  expect(saved.objects).toHaveLength(2);
+  expect(saved.objects[1].kind).toBe('row-straight');
+  expect(saved.objects[1].seats.length).toBeGreaterThan(1);
+  expect(new Set(saved.objects[1].seats.map((s: { y: number }) => s.y)).size).toBe(1);
+  // 6. Esc membatalkan jangkar tanpa commit.
+  await pointer('pointerdown',130,160);
+  await pointer('pointerup',130,160);
   expect(host.textContent).toContain('Jangkar:');
-  await pointer('pointerdown',120,120);
-  await pointer('pointermove',198,188);
-  await pointer('pointercancel',198,188);
-  await pointer('pointerup',198,188);
-  expect((await save()).objects).toHaveLength(1);
+  await act(async () => window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'})));
+  await pointer('pointerup',130,160);
+  expect((await save()).objects).toHaveLength(2);
+  expect(host.querySelector('.seat-drag-summary')).toBeNull();
+  expect(host.textContent).not.toContain('Jangkar:');
 });

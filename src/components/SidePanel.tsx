@@ -23,7 +23,6 @@ interface Props {
   rowForm: RowForm;
   setRowForm: (f: RowForm) => void;
   anchor: Pt | null;
-  onCommitRow: () => void;
   aisleWidth: number;
   setAisleWidth: (v: number) => void;
   showBg: boolean;
@@ -41,7 +40,7 @@ interface Props {
   onEnterSection: (id: string) => void;
   validCount: number | null;
   rejectedCount: number | null;
-  canCommit: boolean;
+  previewCount: number | null;
   onMarkSection: () => void;
   onUnmarkSection: () => void;
   onPurgeInvalid: () => void;
@@ -104,11 +103,10 @@ export default function SidePanel(p: Props) {
   const groupOther = doc.objects.filter((o) => !o.isSection && !o.kind.startsWith('row') && matches(o));
   const invalidTotal = doc.objects.flatMap((o) => o.seats).filter((s) => s.invalid).length;
 
-  // CTA utama footer: kontekstual, tidak menutupi scroll (sticky bottom panel).
+  // CTA footer venue: baris invalid pada kelompok terpilih.
+  // Mode section tidak pakai footer CTA — semua aksi sudah inline di panel.
   const cta = (() => {
-    if (tool === 'row' && p.canCommit) {
-      return { label: `Buat ${p.validCount} kursi valid`, fn: p.onCommitRow, disabled: false };
-    }
+    if (p.focusId) return null;
     if (selected && (selected.kind === 'row-straight' || selected.kind === 'row-arc')
       && selected.seats.some((s) => s.invalid)) {
       return { label: `Buang ${selected.seats.filter((s) => s.invalid).length} kursi invalid`, fn: p.onPurgeInvalid, disabled: false };
@@ -124,6 +122,14 @@ export default function SidePanel(p: Props) {
     if (e.key === 'ArrowLeft') setTab(order[(i + order.length - 1) % order.length]);
   };
 
+  // Header konteks section: fix di luar area scroll (bukan sticky di dalam
+  // pbody) agar tak menimpa judul panel saat scroll.
+  const focusActive = p.focusId ? doc.objects.find((o) => o.id === p.focusId) ?? null : null;
+  const focusSeatCount = focusActive
+    ? doc.objects.flatMap((o) => o.seats).filter((s) => s.sectionId === focusActive.id).length
+    : 0;
+  const focusCat = focusActive?.categoryId ? categoryById(doc, focusActive.categoryId) : null;
+
   return (
     <div onPointerLeave={() => p.onHoverObject(null)} id="side-panel" className={p.open ? 'panel open' : 'panel'}>
       <button className="drawer-close" onClick={() => { p.onHoverObject(null); p.onCloseDrawer(); }}>Tutup panel ✕</button>
@@ -137,10 +143,32 @@ export default function SidePanel(p: Props) {
         ))}
       </div>
 
+      {tab === 'props' && focusActive && (
+        <div className="section-contextbar" aria-label={`Section aktif ${focusActive.label}`}>
+          <span className="ctxicon" aria-hidden="true"><Shapes size={18} strokeWidth={2} /></span>
+          <div className="ctxtext">
+            <p className="ctxtitle">
+              <span className="ell" title={focusActive.label}>{focusActive.label}</span>
+              <span className="badge b-blue ctx-flag">Section</span>
+            </p>
+            <p className="muted ctxsub" title={`${focusSeatCount} kursi${focusCat ? ` · ${focusCat.name}` : ''}`}>
+              {focusSeatCount} kursi{focusCat ? ` · ${focusCat.name} · Rp${focusCat.price.toLocaleString('id-ID')}` : ' · belum ada kategori'}
+            </p>
+          </div>
+          {focusCat && <i aria-hidden="true" className="section-context-dot" style={{ background: focusCat.color }} />}
+        </div>
+      )}
+
       <div className="pbody" role="tabpanel">
         {tab === 'category' && <CategoryTab />}
 
         {tab === 'props' && (
+          p.focusId ? (
+            <SectionProps
+              p={p} f={f} tool={tool} selected={selected}
+              onRequestDelete={(id) => setPendingDeleteId(id)}
+            />
+          ) : (
           <>
             {selectedSeatIds.length > 0 ? (
               <SeatSelectionEditor key={selectedSeatIds.join(',')} />
@@ -160,6 +188,7 @@ export default function SidePanel(p: Props) {
               </>
             )}
           </>
+          )
         )}
 
         {tab === 'objek' && (
@@ -332,8 +361,216 @@ function ToolSteps({ items }: { items: string[] }) {
   );
 }
 
-function ToolOptions({ p, f, tool }: { p: Props; f: RowForm; tool: string }) {
+// ── Section view editor: Properti dirapikan per tool ──────────────────────
+function SectionProps({ p, f, tool, selected, onRequestDelete }: {
+  p: Props; f: RowForm; tool: string; selected: VenueObject | null; onRequestDelete: (id: string) => void;
+}) {
   const { state } = useStore();
+  const { doc, selectedSeatIds } = state;
+  const active = doc.objects.find((o) => o.id === p.focusId) ?? null;
+  if (!active) return null;
+
+  const isRow = (o: VenueObject) => o.kind === 'row-straight' || o.kind === 'row-arc';
+  const inFocus = (o: VenueObject) =>
+    o.id === active.id || o.sectionId === active.id || o.seats.some((s) => s.sectionId === active.id);
+  const selectedInFocus = selected && inFocus(selected) ? selected : null;
+  const foreignSelected = selected && !selectedInFocus ? selected : null;
+
+  return (
+    <div className="section-props">
+      {selectedSeatIds.length > 0 ? (
+        <SeatSelectionEditor key={selectedSeatIds.join(',')} />
+      ) : tool === 'row' ? (
+        <SectionRowPanel p={p} f={f} active={active} />
+      ) : tool === 'seat' ? (
+        <ToolShell icon={Armchair} title="Pilih kursi" sub="Klik · Shift/Cmd multi · seret marquee">
+          <div className="object-config-group">
+            <h4 className="subh">1 · Cara memilih</h4>
+            <ToolSteps items={[
+              'Klik 1 kursi untuk memilih',
+              'Shift / Cmd / Ctrl + klik untuk multi-pilih',
+              'Seret area kosong untuk marquee blok sekaligus',
+            ]} />
+          </div>
+          <div className="object-config-group">
+            <h4 className="subh">2 · Setelah terpilih</h4>
+            <p className="muted">Ubah baris/nomor dari panel yang muncul. Tekan Delete untuk hapus kursi saja (kelompok baris tetap ada). Batal via tombol di banner atas kanvas.</p>
+          </div>
+        </ToolShell>
+      ) : tool === 'hand' ? (
+        <ToolShell icon={Hand} title="Geser kanvas" sub="Navigasi di dalam section">
+          <div className="object-config-group">
+            <h4 className="subh">Cara pakai</h4>
+            <ToolSteps items={[
+              'Seret di mana saja untuk menggeser tampilan',
+              'Scroll untuk zoom in / out',
+              'Tekan V untuk kembali ke Select',
+            ]} />
+          </div>
+        </ToolShell>
+      ) : selectedInFocus && selectedInFocus.id !== active.id && isRow(selectedInFocus) ? (
+        <RowInSectionPanel
+          p={p} row={selectedInFocus}
+          onRequestDelete={onRequestDelete}
+        />
+      ) : selectedInFocus && selectedInFocus.id === active.id ? (
+        <SectionSelfPanel active={active} onRequestDelete={onRequestDelete} />
+      ) : foreignSelected ? (
+        <ToolShell icon={TriangleAlert} title="Pilihan dari section lain" sub="Tidak ikut diubah di sini">
+          <div className="object-config-group">
+            <p className="muted">“{foreignSelected.label}” milik {foreignSelected.sectionId
+              ? doc.objects.find((o) => o.id === (foreignSelected as VenueObject).sectionId)?.label ?? 'section lain'
+              : 'venue'}. Masuk ke section pemiliknya untuk mengedit.</p>
+            {foreignSelected.sectionId && doc.objects.some((o) => o.id === (foreignSelected as VenueObject).sectionId && o.isSection) && (
+              <div className="row"><button onClick={() => p.onEnterSection((foreignSelected as VenueObject).sectionId as string)}>
+                Masuk ke {doc.objects.find((o) => o.id === (foreignSelected as VenueObject).sectionId)?.label}
+              </button></div>
+            )}
+          </div>
+        </ToolShell>
+      ) : (
+        <FocusSectionLayout focusId={active.id} onEnterSection={p.onEnterSection} />
+      )}
+    </div>
+  );
+}
+
+function SectionRowPanel({ p, f, active }: { p: Props; f: RowForm; active: VenueObject }) {
+  const { state } = useStore();
+  const cat = active.categoryId ? categoryById(state.doc, active.categoryId) : null;
+  return (
+    <ToolShell icon={Armchair} title="Buat baris kursi" sub="Satu baris · klik – gerak – klik" label="Buat baris kursi">
+      <div className="object-config-group">
+        <h4 className="subh">1 · Target</h4>
+        <p className="tool-target">
+          <span className="badge b-blue">Section</span>
+          <strong>{active.label}</strong>
+        </p>
+        {cat ? (
+          <p className="muted tool-cat">
+            <i aria-hidden="true" style={{ background: cat.color, width: 12, height: 12, borderRadius: '50%', display: 'inline-block', marginRight: 6, verticalAlign: -1 }} />
+            Harga ngikut kategori: <strong>{cat.name}</strong> · Rp{cat.price.toLocaleString('id-ID')}. Ubah di tab Kategori.
+          </p>
+        ) : (
+          <p className="muted">Harga ngikut kategori section aktif. Atur di tab Kategori.</p>
+        )}
+      </div>
+      <div className="object-config-group">
+        <h4 className="subh">2 · Jarak</h4>
+        <div className="frow">
+          <Num label="Jarak kursi" value={f.seatGap} onChange={(v) => p.setRowForm({ ...f, seatGap: v })} min={8} max={120} />
+          <Num label="Jarak baris" value={f.rowGap} onChange={(v) => p.setRowForm({ ...f, rowGap: v })} min={8} max={160} />
+        </div>
+      </div>
+      <div className="object-config-group">
+        <h4 className="subh">3 · Cara buat</h4>
+        <ToolSteps items={[
+          'Klik kanvas untuk titik awal baris',
+          'Gerakkan kursor ke kiri / kanan — preview mengikuti',
+          'Klik lagi untuk menyimpan baris',
+        ]} />
+        {!p.anchor ? (
+          <p className="muted">Belum ada titik awal — klik kanvas di dalam section.</p>
+        ) : (
+          <>
+            <p className="muted">Jangkar: {p.anchor[0]}, {p.anchor[1]}. Klik lagi untuk simpan, seret untuk gambar langsung, Esc untuk batal.</p>
+            {p.previewCount !== null && (
+              <p className="tool-stat">{p.previewCount} kursi · {p.validCount} valid{p.rejectedCount ? ` · ${p.rejectedCount} ditolak` : ''}.</p>
+            )}
+          </>
+        )}
+      </div>
+    </ToolShell>
+  );
+}
+
+function RowInSectionPanel({ p, row, onRequestDelete }: {
+  p: Props; row: VenueObject; onRequestDelete: (id: string) => void;
+}) {
+  const { state, update } = useStore();
+  const { doc } = state;
+  const invalidN = row.seats.filter((s) => s.invalid).length;
+  const owner = row.sectionId ? doc.objects.find((o) => o.id === row.sectionId && o.isSection) : null;
+  const cat = owner?.categoryId ? categoryById(doc, owner.categoryId) : null;
+  const price = cat ? cat.price : row.price;
+  return (
+    <div className="object-properties">
+      <div className="ctxhead ctxhead--stable">
+        <span className="ctxicon" aria-hidden="true"><Armchair size={18} strokeWidth={2} /></span>
+        <div className="ctxtext">
+          <p className="ctxtitle">
+            <span className="ell" title={row.label}>{row.label}</span>
+            <span className="badge b-blue ctx-flag">Baris</span>
+          </p>
+          <p className="muted ctxsub" title={`${row.seats.length} kursi${invalidN > 0 ? ` · ${invalidN} invalid` : ''}`}>
+            {row.kind === 'row-arc' ? 'Baris busur' : 'Baris lurus'} · {row.seats.length} kursi{invalidN > 0 ? ` · ${invalidN} invalid` : ''}
+          </p>
+        </div>
+      </div>
+      <div className="object-config-group">
+        <h4 className="subh">1 · Identitas</h4>
+        <CommittedText
+          key={row.id}
+          label="Nama"
+          value={row.label}
+          onCommit={(v) => {
+            update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === row.id ? { ...o, label: v } : o)) }));
+          }}
+        />
+        <p className="muted">
+          {cat && <i aria-hidden="true" style={{ background: cat.color, width: 12, height: 12, borderRadius: '50%', display: 'inline-block', marginRight: 6, verticalAlign: -1 }} />}
+          Harga/kursi: <strong>Rp{price.toLocaleString('id-ID')}</strong>
+          {cat ? ` · ngikut kategori ${cat.name}. Ubah di tab Kategori.` : ' · section tanpa kategori.'}
+        </p>
+      </div>
+      {invalidN > 0 && (
+        <div className="object-config-group">
+          <h4 className="subh">2 · Kursi invalid</h4>
+          <p className="muted">{invalidN} dari {row.seats.length} kursi di luar section — ditandai invalid, tidak dijual di preview.</p>
+          <div className="row"><button onClick={p.onPurgeInvalid}>Buang kursi invalid</button></div>
+        </div>
+      )}
+      <div className="object-config-group">
+        <h4 className="subh">{invalidN > 0 ? '3 · Susunan kursi' : '2 · Susunan kursi'}</h4>
+        <SeatLayoutControls key={row.id} target={row} compact />
+      </div>
+      <div className="object-config-group object-danger">
+        <button className="danger" onClick={() => onRequestDelete(row.id)}><Trash2 size={15} aria-hidden="true" />Hapus kelompok baris</button>
+      </div>
+    </div>
+  );
+}
+
+function SectionSelfPanel({ active, onRequestDelete }: {
+  active: VenueObject; onRequestDelete: (id: string) => void;
+}) {
+  const { update } = useStore();
+  return (
+    <div className="object-properties">
+      <div className="object-config-group">
+        <h4 className="subh">1 · Identitas section</h4>
+        <CommittedText
+          key={active.id}
+          label="Nama"
+          value={active.label}
+          onCommit={(v) => {
+            update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === active.id ? { ...o, label: v } : o)) }));
+          }}
+        />
+        <SectionCategorySelector selected={active} />
+      </div>
+      <div className="object-config-group">
+        <h4 className="subh">2 · Susunan kursi</h4>
+        <SeatLayoutControls key={active.id} target={active} compact />
+      </div>
+      <div className="object-config-group object-danger">
+        <button className="danger" onClick={() => onRequestDelete(active.id)}><Trash2 size={15} aria-hidden="true" />Hapus section</button>
+      </div>
+    </div>
+  );
+}
+
+function ToolOptions({ p, tool }: { p: Props; f: RowForm; tool: string }) {
   if (tool === 'hand') {
     return (
       <ToolShell icon={Hand} title="Geser kanvas" sub="Navigasi tampilan, bukan menggambar">
@@ -364,75 +601,12 @@ function ToolOptions({ p, f, tool }: { p: Props; f: RowForm; tool: string }) {
     );
   }
   if (tool === 'row') {
-    const targetId = p.focusId ?? p.sectionId ?? null;
-    const targetLabel = targetId
-      ? p.sections.find((s) => s.id === targetId)?.label ?? p.sections[0]?.label ?? null
-      : null;
-    const hasTarget = !!targetId;
-    const cat = targetId ? categoryById(state.doc, state.doc.objects.find((o) => o.id === targetId)?.categoryId) : null;
+    // Tool baris hanya hidup di dalam section (dock venue tak memuatnya).
+    // Cabang ini fallback bila state nyasar ke venue.
     return (
-      <ToolShell icon={Armchair} title="Buat baris kursi" sub={hasTarget && targetLabel ? targetLabel : 'Masuk ke section dulu'} label="Buat baris kursi">
+      <ToolShell icon={Armchair} title="Buat baris kursi" sub="Di dalam section" label="Buat baris kursi">
         <div className="object-config-group">
-          <h4 className="subh">Target section</h4>
-          {!hasTarget ? (
-            <p className="tool-warn">Masuk ke section dulu (klik dua kali section di kanvas) — baris hanya bisa dibuat di dalam section fokus.</p>
-          ) : (
-            <>
-              <p className="tool-target">
-                <span className="badge b-blue">Section</span>
-                <strong>{targetLabel}</strong>
-              </p>
-              {cat ? (
-                <p className="muted tool-cat">
-                  <i aria-hidden="true" style={{ background: cat.color, width: 12, height: 12, borderRadius: '50%', display: 'inline-block', marginRight: 6, verticalAlign: -1 }} />
-                  Harga ngikut kategori: <strong>{cat.name}</strong> · Rp{cat.price.toLocaleString('id-ID')}. Ubah di tab Kategori.
-                </p>
-              ) : (
-                <p className="muted">Harga ngikut kategori section aktif. Atur di tab Kategori.</p>
-              )}
-            </>
-          )}
-        </div>
-        <div className="object-config-group">
-          <h4 className="subh">Tata letak</h4>
-          <label className="fld"><span>Mode</span>
-            <select value={f.mode} onChange={(e) => p.setRowForm({ ...f, mode: e.target.value as 'straight' | 'arc' })}>
-              <option value="straight">Lurus</option>
-              <option value="arc">Melengkung (busur)</option>
-            </select>
-          </label>
-          <div className="frow">
-            <Num label="Jml baris" value={f.rows} onChange={(v) => p.setRowForm({ ...f, rows: v })} min={1} max={60} />
-            <Num label="Kursi/baris" value={f.seatsPerRow} onChange={(v) => p.setRowForm({ ...f, seatsPerRow: v })} min={1} max={200} />
-          </div>
-          <div className="frow">
-            <Num label="Jarak kursi" value={f.seatGap} onChange={(v) => p.setRowForm({ ...f, seatGap: v })} min={8} max={120} />
-            <Num label="Jarak baris" value={f.rowGap} onChange={(v) => p.setRowForm({ ...f, rowGap: v })} min={8} max={160} />
-          </div>
-        </div>
-        <div className="object-config-group">
-          <h4 className="subh">{f.mode === 'straight' ? 'Arah baris' : 'Bentuk busur'}</h4>
-          {f.mode === 'straight'
-            ? <Num label="Sudut (°)" value={f.angleDeg} onChange={(v) => p.setRowForm({ ...f, angleDeg: v })} min={-180} max={180} />
-            : (
-              <>
-                <Num label="Radius (px)" value={f.radius} onChange={(v) => p.setRowForm({ ...f, radius: v })} min={20} max={1000} />
-                <div className="frow">
-                  <Num label="Bentang (°)" value={f.spanDeg} onChange={(v) => p.setRowForm({ ...f, spanDeg: v })} min={5} max={360} />
-                  <Num label="Sudut awal (°)" value={f.startDeg} onChange={(v) => p.setRowForm({ ...f, startDeg: v })} min={-180} max={360} />
-                </div>
-              </>
-            )}
-          <Num label="Offset label" value={f.rowLabelOffset} onChange={(v) => p.setRowForm({ ...f, rowLabelOffset: v })} min={0} max={25} />
-        </div>
-        <div className="object-config-group">
-          <h4 className="subh">Status draf</h4>
-          {p.anchor
-            ? <p className="muted">Jangkar: {p.anchor[0]}, {p.anchor[1]}. Klik kanvas untuk pindah, seret untuk blok lurus.</p>
-            : <p className="muted">Belum ada jangkar — klik kanvas untuk pasang jangkar, atau seret untuk blok lurus.</p>}
-          {p.validCount !== null && (p.focusId ?? p.sectionId) && (
-            <p className="tool-stat">{p.validCount} kandidat valid (footprint penuh di dalam) · {p.rejectedCount} ditolak (keluar/lubang/lorong).</p>
-          )}
+          <p className="tool-warn">Masuk ke section dulu (klik dua kali section di kanvas) — baris hanya bisa dibuat di dalam section fokus.</p>
         </div>
       </ToolShell>
     );
