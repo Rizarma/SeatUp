@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from 'react';
+import { act, Profiler } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import App from '../App';
@@ -33,7 +33,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-async function mount() {
+async function mount(onCommit?: (host: HTMLElement) => void) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 1000, height: 700 } as DOMRect);
@@ -46,7 +46,9 @@ async function mount() {
   const root = createRoot(host);
   cleanup = () => { act(() => root.unmount()); host.remove(); vi.restoreAllMocks(); };
   localStorage.setItem('seat-poc-venue-v1', JSON.stringify({ ...emptyVenue(), objects: [stage, vector, aisle] }));
-  await act(async () => root.render(<App />));
+  await act(async () => root.render(
+    <Profiler id="App" onRender={() => onCommit?.(host)}><App /></Profiler>,
+  ));
   const click = async (selector: string) => act(async () => (host.querySelector(selector) as HTMLButtonElement).click());
   await click('[aria-label="Muat simpanan lokal"]');
   const svg = () => host.querySelector('svg.canvas')!;
@@ -146,4 +148,33 @@ it('kanvas: vector menyimpan rotation via gagang, path verbatim, render rotate',
   // Render memakai pusat flatten: bbox path 200x100 di (700,100) -> pusat (800,150).
   expect(svg().innerHTML).toContain('rotate(90 800 150)');
   expect(svg().querySelector('[data-rotate-handle="vec-1"]')).not.toBeNull();
+});
+
+it('kanvas: bbox seleksi section vector selaras pada setiap commit setelah drag', async () => {
+  const pathSelector = 'svg.canvas [aria-label="Kotak"] path';
+  const outlineSelector = 'svg.canvas rect[stroke-dasharray="6 4"][fill="none"]';
+  const commits: Array<{ transform: string | null; x: number }> = [];
+  const { host, svg, toClient, pickObject } = await mount((host) => {
+    const outline = host.querySelector(outlineSelector);
+    if (outline) {
+      commits.push({
+        transform: host.querySelector(pathSelector)?.parentElement?.getAttribute('transform') ?? null,
+        x: Number(outline.getAttribute('x')),
+      });
+    }
+  });
+  await pickObject('Kotak');
+  await act(async () => (host.querySelector('label.document-option input') as HTMLInputElement).click());
+  expect(host.querySelector(outlineSelector)?.getAttribute('x')).toBe('700');
+  await act(async () => { host.querySelector(pathSelector)!.dispatchEvent(ptr('pointerdown', toClient(800, 150))); });
+  await act(async () => { svg().dispatchEvent(ptr('pointermove', toClient(850, 150))); });
+  expect(host.querySelector(outlineSelector)).toBeNull();
+
+  commits.length = 0;
+  await act(async () => { svg().dispatchEvent(ptr('pointerup', toClient(850, 150))); });
+  expect(host.querySelector(outlineSelector)?.getAttribute('x')).toBe('750');
+  expect(commits.length).toBeGreaterThan(0);
+  for (const commit of commits) {
+    expect(commit).toEqual({ transform: 'translate(750 100) scale(1)', x: 750 });
+  }
 });

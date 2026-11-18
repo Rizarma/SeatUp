@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Minus, Maximize } from 'lucide-react';
 import type { Pt, Seat, VenueObject } from '../lib/venue';
 import { uid } from '../lib/venue';
@@ -240,7 +240,13 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
   const [scaleDrag, setScaleDrag] = useState<{ id: string; orig: VenueObject; cx: number; cy: number; d0: number } | null>(null);
   /** Drag gagang putar: putar preview terhadap (cx,cy); commit saat pointerup. */
   const [rotateDrag, setRotateDrag] = useState<{ id: string; orig: VenueObject; cx: number; cy: number; startAngle: number; delta: number } | null>(null);
-  const [vecBox, setVecBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [vectorPathBounds, setVectorPathBounds] = useState<{
+    d: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const [seatMarquee, setSeatMarquee] = useState<{ start: Pt; end: Pt } | null>(null);
   const seatGesture = useRef<{ start: Pt; clientX: number; clientY: number; pointerId: number; additive: boolean } | null>(null);
   /** Tap terakhir di kursi (untuk bedakan klik tunggal vs ganda). */
@@ -413,28 +419,6 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     return () => svg.removeEventListener('wheel', wheel);
   }, [zoom]);
   const selected = index.objectById.get(selectedId ?? '') ?? null;
-
-  // ukur bbox vektor terpilih (koordinat path) -> konversi ke kanvas
-  useEffect(() => {
-    setVecBox(null);
-    if (selected?.kind !== 'vector' || !selected.d || !selected.vTransform) return;
-    const g = selVecRef.current;
-    if (!g) return;
-    try {
-      const path = g.querySelector('path');
-      if (!path) return;
-      const b = (path as unknown as SVGGraphicsElement).getBBox();
-      const t = selected.vTransform;
-      setVecBox({
-        x: t.tx + b.x * t.scale,
-        y: t.ty + b.y * t.scale,
-        w: b.width * t.scale,
-        h: b.height * t.scale,
-      });
-    } catch {
-      setVecBox(null);
-    }
-  }, [selected]);
 
   const toSvgCb = useCallback((clientX: number, clientY: number): Pt | null => {
     if (!svgRef.current) return null;
@@ -916,13 +900,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     if (scaleDrag && previewObj) {
       const done = previewObj;
       update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === done.id ? done : o)) }));
-      setVecBox(null);
     }
     // Rotate: commit hanya bila sudut berubah (delta 0 = tak ada undo baru).
     if (rotateDrag && previewObj && rotateDrag.delta !== 0) {
       const done = previewObj;
       update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === done.id ? done : o)) }));
-      if (done.kind === 'vector') setVecBox(null);
     }
     dragCancelledRef.current = false;
     dragPointerRef.current = null;
@@ -954,6 +936,38 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     ? rendered.filter(o => focusObjIds!.has(o.id))
     : rendered.filter(o => o.kind !== 'row-straight' && o.kind !== 'row-arc'),
   [rendered, focusId, focusObjIds]);
+
+  const selectedShape = previewObj?.id === selectedId ? previewObj : selected;
+  const selectedVector = selectedShape?.kind === 'vector' ? selectedShape : null;
+  const vectorTransform = selectedVector?.vTransform;
+  const selectedPathData = selectedVector && vectorTransform
+    && (!focusObjIds || focusObjIds.has(selectedVector.id))
+    ? selectedVector.d
+    : undefined;
+  // getBBox mengukur path lokal. Posisi kanvas mengikuti transform terbaru pada render yang sama.
+  useLayoutEffect(() => {
+    const path = selVecRef.current?.querySelector('path');
+    if (!selectedPathData || !path) {
+      setVectorPathBounds(null);
+      return;
+    }
+    try {
+      const { x, y, width, height } = path.getBBox();
+      setVectorPathBounds({ d: selectedPathData, x, y, width, height });
+    } catch {
+      setVectorPathBounds(null);
+    }
+  }, [selectedPathData]);
+
+  const vecBox = vectorTransform && vectorPathBounds && vectorPathBounds.d === selectedPathData
+    ? {
+        x: vectorTransform.tx + vectorPathBounds.x * vectorTransform.scale,
+        y: vectorTransform.ty + vectorPathBounds.y * vectorTransform.scale,
+        w: vectorPathBounds.width * vectorTransform.scale,
+        h: vectorPathBounds.height * vectorTransform.scale,
+      }
+    : null;
+
   // Pusat rotasi vector (flatten + vTransform, tanpa rotasi) — pusat yang sama
   // dipakai sectionGeomFor agar tampilan = uji containment. Memo per objek
   // agar pan/zoom tak mem-flatten ulang.
@@ -1442,52 +1456,35 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         );
       })()}
 
-      {selected?.id !== focusId && selected?.kind === 'vector' && vecBox && tool === 'select' && !drag && (() => {
-        // vecBox diukur sekali saat seleksi; saat shape digeser/di-scale (previewObj),
-        // tampilkan kotak mengikuti transform preview agar garis putus-putus ikut gerak.
-        // Sengaja disembunyikan selama drag translate/vertex: shape + vertex sudah
-        // mengikuti previewObj, kotak terpisah dari sumber basi (vecBox state async +
-        // vectorCenters memo sync) sempat beda 1 frame dan terlihat flashing dari posisi lama.
-        const t0 = selected.vTransform;
-        const t1 = previewObj?.id === selected.id ? previewObj.vTransform : t0;
-        let dx = vecBox;
-        if (t0 && t1 && (t1.tx !== t0.tx || t1.ty !== t0.ty || t1.scale !== t0.scale)) {
-          const k = t0.scale !== 0 ? t1.scale / t0.scale : 1;
-          dx = {
-            x: t1.tx + (vecBox.x - t0.tx) * k,
-            y: t1.ty + (vecBox.y - t0.ty) * k,
-            w: vecBox.w * k,
-            h: vecBox.h * k,
-          };
-        }
+      {selectedVector && selectedVector.id !== focusId && vecBox && tool === 'select' && !drag && (() => {
+        const { x, y, w, h } = vecBox;
         // Saat ada rotasi, pusat skala = pusat rotasi (flatten) agar konsisten
         // dengan containment & preview; kotak seleksi ikut diputar.
-        const baseForCenter = previewObj?.id === selected.id ? previewObj : selected;
-        const rot1 = t1?.rotation ?? 0;
-        const rc = Number.isFinite(rot1) && rot1 !== 0 ? vectorCanvasCenter(baseForCenter) : null;
-        const cx = rc ? rc[0] : dx.x + dx.w / 2;
-        const cy = rc ? rc[1] : dx.y + dx.h / 2;
+        const rot1 = vectorTransform?.rotation ?? 0;
+        const rc = Number.isFinite(rot1) && rot1 !== 0
+          ? vectorCenters.get(selectedVector.id) ?? vectorCanvasCenter(selectedVector)
+          : null;
+        const cx = rc ? rc[0] : x + w / 2;
+        const cy = rc ? rc[1] : y + h / 2;
         const S = 12;
         const corners: Array<[number, number]> = [
-          [dx.x, dx.y],
-          [dx.x + dx.w, dx.y],
-          [dx.x, dx.y + dx.h],
-          [dx.x + dx.w, dx.y + dx.h],
+          [x, y],
+          [x + w, y],
+          [x, y + h],
+          [x + w, y + h],
         ];
         return (
           <g transform={rc ? `rotate(${rot1} ${rc[0]} ${rc[1]})` : undefined}>
-            <rect x={dx.x} y={dx.y} width={dx.w} height={dx.h} fill="none" stroke="#2563eb" strokeWidth={1.5} strokeDasharray="6 4" pointerEvents="none" />
+            <rect x={x} y={y} width={w} height={h} fill="none" stroke="#2563eb" strokeWidth={1.5} strokeDasharray="6 4" pointerEvents="none" />
             {corners.map(([px, py], i) => (
               <rect
                 key={i}
                 x={px - S / 2} y={py - S / 2} width={S} height={S} fill="#fff" stroke="#2563eb" strokeWidth={2} className="vh"
                 style={{ cursor: 'nwse-resize' }}
                 onPointerDown={(e) => {
-                  if (!selected.vTransform) return;
                   e.stopPropagation();
-                  const base = previewObj?.id === selected.id ? previewObj : selected;
                   beginObjectDrag(e.pointerId);
-                  setScaleDrag({ id: selected.id, orig: base, cx, cy, d0: Math.max(Math.hypot(px - cx, py - cy), 4) });
+                  setScaleDrag({ id: selectedVector.id, orig: selectedVector, cx, cy, d0: Math.max(Math.hypot(px - cx, py - cy), 4) });
                 }}
               />
             ))}
@@ -1500,36 +1497,22 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
 
       {/* Gagang putar: lingkaran di atas pusat shape terpilih (tool select).
           Seret mengelilingi pusat untuk memutar; Shift = snap 15°; Esc batal.
-          Disembunyikan selama drag translate/skala: konektor garisnya dihitung dari
-          box+pusat yang beda sumber (vecBox basi vs preview fresh) sehingga sempat
-          meregang/flashing dari posisi lama. Muncul lagi saat idle/rotate. */}
+          Gagang muncul saat idle atau rotasi. */}
       {selected && tool === 'select' && selected.id !== focusId && !drag && !scaleDrag
         && (selected.kind === 'stage' || selected.kind === 'section'
           || selected.kind === 'import-draft' || selected.kind === 'vector')
         && visible.find((o) => o.id === selected.id) && (() => {
-        const target = previewObj?.id === selected.id ? previewObj : selected;
+        const target = selectedShape ?? selected;
         const active = rotateDrag && rotateDrag.id === selected.id ? rotateDrag : null;
         let box: { x: number; y: number; w: number; h: number } | null = null;
         let cx = 0;
         let cy = 0;
         if (target.kind === 'vector') {
-          if (!vecBox || !target.vTransform) return null;
-          const t0 = selected.vTransform;
-          const t1 = target.vTransform;
-          let dx = vecBox;
-          if (t0 && (t1.tx !== t0.tx || t1.ty !== t0.ty || t1.scale !== t0.scale)) {
-            const k = t0.scale !== 0 ? t1.scale / t0.scale : 1;
-            dx = {
-              x: t1.tx + (vecBox.x - t0.tx) * k,
-              y: t1.ty + (vecBox.y - t0.ty) * k,
-              w: vecBox.w * k,
-              h: vecBox.h * k,
-            };
-          }
-          box = dx;
+          if (!vecBox) return null;
+          box = vecBox;
           const rc = vectorCenters.get(target.id) ?? vectorCanvasCenter(target);
-          cx = rc ? rc[0] : dx.x + dx.w / 2;
-          cy = rc ? rc[1] : dx.y + dx.h / 2;
+          cx = rc ? rc[0] : box.x + box.w / 2;
+          cy = rc ? rc[1] : box.y + box.h / 2;
         } else {
           // Kotak dari objek awal drag agar pusat stabil saat preview berputar.
           const src = active ? active.orig : target;
