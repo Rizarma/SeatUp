@@ -8,6 +8,7 @@ import { getGridLevels, minorOpacity } from '../lib/grid';
 import { resizePreserveScale } from '../lib/viewTransform';
 import { resolvedPoints, sectionGeomFor, shapeCenter, vectorCanvasCenter } from '../lib/contain';
 import { bboxOf, normalizeAngle, rotatePoints, rotateShapeBy, rotationOf, toPointsString, translatePoints } from '../lib/geometry';
+import { buildSectionSummaryPath, sectionDragOffset } from '../lib/rowSummary';
 import { useStore } from '../store';
 import { getDocIndex, queryBox, queryBoxVisible, queryPoint, type SeatRef } from '../lib/docIndex';
 import { cullMargin, lodFor } from '../lib/viewTransform';
@@ -985,6 +986,64 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
 
   const ptsStr = toPointsString;
 
+  // ---- Ringkasan susunan kursi mode venue (satu path tipis per section) ----
+  // Sumber: seatsBySection via seat.sectionId (baris lama ikut). Grup per
+  // (objId pemilik, seat.row); urutan fisik/data, bukan label/nomor.
+  // Cache terhadap perubahan data kursi: pan/zoom/hover memakai ulang path
+  // yang sama (deps tak mencakup vb/hover). Clip = geometri aktual section
+  // (rotasi polygon di-bake via resolvedPoints; vector via transform di clip).
+  // Saat section digeser: clip mengikuti bentuk terbaru (rendered/preview),
+  // kursi mengikuti delta drag sebelum commit; saat rotate/resize: clip ikut
+  // bentuk terbaru, kursi mengikuti data lama (offset nol).
+  interface VenueSummaryClipPoly { kind: 'poly'; d: string }
+  interface VenueSummaryClipVec {
+    kind: 'vec'; d: string; tx: number; ty: number; scale: number;
+    rot: number; cx: number | null; cy: number | null; rule: 'evenodd' | 'nonzero';
+  }
+  interface VenueSummaryEntry { d: string; color: string; clip: VenueSummaryClipPoly | VenueSummaryClipVec }
+  const venueSummaries = useMemo(() => {
+    if (focusId) return null;
+    const out = new Map<string, VenueSummaryEntry>();
+    const dragId = drag && drag.vertex === -1 ? drag.id : null;
+    const dragOrig = drag && drag.vertex === -1 ? drag.orig : null;
+    for (const o of rendered) {
+      if (!o.isSection) continue;
+      if (o.kind !== 'section' && o.kind !== 'vector') continue;
+      const refs = index.seatsBySection.get(o.id);
+      if (!refs || refs.length === 0) continue;
+      let offset: Pt | null = null;
+      if (dragId === o.id && dragOrig && previewObj?.id === o.id) {
+        const off = sectionDragOffset(dragOrig, previewObj);
+        if (off[0] !== 0 || off[1] !== 0) offset = off;
+      }
+      const s = buildSectionSummaryPath(refs, offset);
+      if (!s.d) continue;
+      let clip: VenueSummaryEntry['clip'];
+      if (o.kind === 'vector') {
+        if (!o.d || !o.vTransform) continue;
+        const t = o.vTransform;
+        const rot = Number.isFinite(t.rotation ?? 0) ? (t.rotation ?? 0) : 0;
+        const c = rot !== 0 ? (vectorCenters.get(o.id) ?? vectorCanvasCenter(o)) : null;
+        clip = {
+          kind: 'vec', d: o.d, tx: t.tx, ty: t.ty, scale: t.scale,
+          rot, cx: c ? c[0] : null, cy: c ? c[1] : null,
+          rule: o.svgFillRule ?? 'nonzero',
+        };
+      } else {
+        if (o.points.length < 3) continue;
+        // Clip sebagai <path> (bukan <polygon>) agar query polygon lama
+        // (section + stage) tak berubah dan dblclick tes tetap ke fill.
+        const rp = resolvedPoints(o);
+        clip = {
+          kind: 'poly',
+          d: `M ${rp.map((p) => `${Math.round(p[0] * 100) / 100} ${Math.round(p[1] * 100) / 100}`).join(' L ')} Z`,
+        };
+      }
+      out.set(o.id, { d: s.d, color: index.sectionColor.get(o.id) ?? '#94a3b3', clip });
+    }
+    return out;
+  }, [focusId, rendered, index, drag, previewObj, vectorCenters]);
+
   // Infinite grid ala Miro: major tegas + minor berbayang, bertukar peran saat zoom.
   // Level dihitung dari vb.w agar kerapatan layar selalu nyaman (~16..80px).
   const grid = useMemo(() => getGridLevels(vb.w), [vb.w]);
@@ -1240,6 +1299,23 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         <pattern id="grid-minor" width={grid.minor} height={grid.minor} patternUnits="userSpaceOnUse">
           <path d={`M ${grid.minor} 0 L 0 0 0 ${grid.minor}`} fill="none" stroke="#e5e7eb" strokeWidth="1" vectorEffect="non-scaling-stroke" strokeOpacity={gridMinorOp} />
         </pattern>
+        {venueSummaries && [...venueSummaries].map(([id, s]) => (
+          s.clip.kind === 'poly'
+            ? (
+              <clipPath key={id} id={`summary-clip-${id}`}>
+                <path d={s.clip.d} />
+              </clipPath>
+            )
+            : (
+              <clipPath key={id} id={`summary-clip-${id}`}>
+                <path
+                  d={s.clip.d}
+                  transform={`${s.clip.rot !== 0 && s.clip.cx !== null && s.clip.cy !== null ? `rotate(${s.clip.rot} ${s.clip.cx} ${s.clip.cy}) ` : ''}translate(${s.clip.tx} ${s.clip.ty}) scale(${s.clip.scale})`}
+                  clipRule={s.clip.rule}
+                />
+              </clipPath>
+            )
+        ))}
       </defs>
       <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} fill="#ffffff" />
       <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} fill="url(#grid-major)" />
@@ -1293,6 +1369,63 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           const fillOpacity = secColor ? 0.18 : o.svgFillOpacity ?? undefined;
           const stroke = secColor ?? (st ? st.color : 'none');
           const strokeWidth = secColor ? 2 / t.scale : st ? st.width : undefined;
+          // Ringkasan venue: fill di bawah, garis ringkasan di tengah (clip ke
+          // geometri aktual, dekoratif), outline di atas agar tetap crisp.
+          // Highlight seleksi/hover dirender belakangan sehingga selalu di atas.
+          const venueSum = !focusId && o.isSection ? venueSummaries?.get(o.id) ?? null : null;
+          if (venueSum) {
+            return (
+              <g key={o.id} {...(isFocusContainer ? {} : sectionEvents)} aria-label={o.label}>
+                <g transform={rc ? `rotate(${rot} ${rc[0]} ${rc[1]})` : undefined}>
+                  <g
+                    ref={isSel ? selVecRef : undefined}
+                    transform={`translate(${t.tx} ${t.ty}) scale(${t.scale})`}
+                  >
+                    <path
+                      d={o.d}
+                      fill={fill}
+                      fillOpacity={fillOpacity}
+                      vectorEffect="non-scaling-stroke"
+                      fillRule={o.svgFillRule ?? 'nonzero'}
+                      stroke="none"
+                      {...(isFocusContainer ? {} : selectDrag)}
+                      style={{ cursor: tool === 'select' ? 'move' : undefined }}
+                    />
+                  </g>
+                </g>
+                <g clipPath={`url(#summary-clip-${o.id})`} pointerEvents="none" aria-hidden="true">
+                  <path
+                    d={venueSum.d}
+                    fill="none"
+                    stroke={venueSum.color}
+                    strokeWidth={3}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={0.55}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </g>
+                <g transform={rc ? `rotate(${rot} ${rc[0]} ${rc[1]})` : undefined} pointerEvents="none" aria-hidden="true">
+                  <g transform={`translate(${t.tx} ${t.ty}) scale(${t.scale})`}>
+                    <path
+                      d={o.d}
+                      fill="none"
+                      fillRule={o.svgFillRule ?? 'nonzero'}
+                      stroke={isSel ? '#2563eb' : stroke}
+                      strokeWidth={isSel ? 2.5 / t.scale : strokeWidth}
+                      strokeLinecap={st?.linecap as 'butt' | 'round' | 'square' | undefined}
+                      strokeLinejoin={st?.linejoin as 'miter' | 'round' | 'bevel' | undefined}
+                      strokeDasharray={st?.dash}
+                      strokeDashoffset={st?.dashOffset}
+                      strokeOpacity={st?.opacity}
+                      vectorEffect="non-scaling-stroke"
+                      style={isSel && !isFocusContainer ? selStyle : undefined}
+                    />
+                  </g>
+                </g>
+              </g>
+            );
+          }
           return (
             <g key={o.id} {...(isFocusContainer ? {} : sectionEvents)} aria-label={o.label}>
               <g transform={rc ? `rotate(${rot} ${rc[0]} ${rc[1]})` : undefined}>
@@ -1380,6 +1513,36 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         const stroke = o.isSection ? sectionColor(o.id) : o.kind === 'import-draft' ? '#dc2626' : o.kind === 'stage' ? '#475569' : '#3b82f6';
         const prot = rotationOf(o);
         const prc = prot !== 0 ? shapeCenter(o) : null;
+        // Ringkasan venue polygon: fill (interaktif) di bawah, garis di tengah
+        // (clip geometri aktual, dekoratif), outline di atas agar tetap crisp.
+        const venueSumPoly = !focusId && o.isSection && o.kind === 'section' ? venueSummaries?.get(o.id) ?? null : null;
+        if (venueSumPoly) {
+          // Outline sebagai <path> (bukan <polygon> kedua) agar jumlah
+          // <polygon> terlihat tetap: fill per section + stage.
+          const outlineD = `M ${o.points.map((p) => `${Math.round(p[0] * 100) / 100} ${Math.round(p[1] * 100) / 100}`).join(' L ')} Z`;
+          return (
+            <g key={o.id} {...(isFocusContainer ? {} : sectionEvents)} aria-label={o.label}>
+              <g transform={prc ? `rotate(${prot} ${prc[0]} ${prc[1]})` : undefined}>
+                <polygon vectorEffect="non-scaling-stroke" points={ptsStr(o.points)} fill={fill} fillOpacity={fillOpacity} stroke="none" {...(isFocusContainer ? {} : selectDrag)} style={{ cursor: tool === 'select' ? 'move' : undefined }} />
+              </g>
+              <g clipPath={`url(#summary-clip-${o.id})`} pointerEvents="none" aria-hidden="true">
+                <path
+                  d={venueSumPoly.d}
+                  fill="none"
+                  stroke={venueSumPoly.color}
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.55}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+              <g transform={prc ? `rotate(${prot} ${prc[0]} ${prc[1]})` : undefined} pointerEvents="none" aria-hidden="true">
+                <path d={outlineD} fill="none" stroke={isSel && !isFocusContainer ? '#2563eb' : stroke} strokeWidth={isSel && !isFocusContainer ? 3 : 2} vectorEffect="non-scaling-stroke" />
+              </g>
+            </g>
+          );
+        }
         return (
           <g key={o.id} {...(isFocusContainer ? {} : sectionEvents)} aria-label={o.label}
             transform={prc ? `rotate(${prot} ${prc[0]} ${prc[1]})` : undefined}>
