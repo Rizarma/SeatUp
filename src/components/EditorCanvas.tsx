@@ -151,16 +151,32 @@ function translateObj(o: VenueObject, dx: number, dy: number): VenueObject {
     points: translatePoints(o.points, dx, dy),
     seats: o.seats.map((s) => ({ ...s, x: s.x + dx, y: s.y + dy })),
   };
-  // vektor disimpan dalam unit path: geser balik ke unit path
+  // Offset vector berada di koordinat venue, seperti delta pointer.
   if (o.vTransform && o.vTransform.scale !== 0) {
     moved.vTransform = {
-      tx: o.vTransform.tx + dx / o.vTransform.scale,
-      ty: o.vTransform.ty + dy / o.vTransform.scale,
-      scale: o.vTransform.scale,
-      ...(o.vTransform.rotation ? { rotation: o.vTransform.rotation } : null),
+      ...o.vTransform,
+      tx: o.vTransform.tx + dx,
+      ty: o.vTransform.ty + dy,
     };
   }
   return moved;
+}
+
+function translateSectionContents(o: VenueObject, sectionId: string, dx: number, dy: number): VenueObject {
+  const rowBelongsToSection = o.sectionId === sectionId;
+  const seatBelongsToSection = (seat: Seat) => seat.sectionId === sectionId;
+  const hasSectionSeats = o.seats.some(seatBelongsToSection);
+  if (!rowBelongsToSection && !hasSectionSeats) return o;
+
+  // Baris lama dapat menyimpan relasi section hanya pada kursinya.
+  const isLegacyRow = !o.sectionId && (o.kind === 'row-straight' || o.kind === 'row-arc');
+  return {
+    ...o,
+    points: rowBelongsToSection || isLegacyRow ? translatePoints(o.points, dx, dy) : o.points,
+    seats: hasSectionSeats
+      ? o.seats.map((seat) => seatBelongsToSection(seat) ? { ...seat, x: seat.x + dx, y: seat.y + dy } : seat)
+      : o.seats,
+  };
 }
 
 /** Lingkaran seat dasar (memo: hanya render ulang bila props primitif berubah). */
@@ -738,9 +754,9 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       return;
     }
     if (!drag) return;
-    const dx = p[0] - drag.start[0];
-    const dy = p[1] - drag.start[1];
     if (drag.vertex >= 0) {
+      const dx = p[0] - drag.start[0];
+      const dy = p[1] - drag.start[1];
       // Vertex ditampilkan terputar; delta pointer (kanvas) diputar balik
       // agar tersimpan ke base points yang benar.
       const rot = rotationOf(drag.orig);
@@ -755,7 +771,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       pts[drag.vertex] = [drag.orig.points[drag.vertex][0] + ddx, drag.orig.points[drag.vertex][1] + ddy];
       setPreviewObj({ ...drag.orig, points: pts });
     } else {
-      setPreviewObj(translateObj(drag.orig, dx, dy));
+      setPreviewObj(finalTranslateForDrag(drag.orig, drag.start, p));
     }
   };
 
@@ -864,7 +880,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       return;
     }
     // Commit drag memakai posisi AKHIR pointerup (bukan preview satu frame tertinggal).
-    // Tepat satu commit/undo untuk seluruh baris yang digeser.
+    // Satu commit/undo untuk objek dan semua kursi yang ikut digeser.
     // Bila gesture dibatalkan (Esc/cancel), pointerup berikutnya NOL commit.
     if (dragCancelledRef.current) {
       dragCancelledRef.current = false;
@@ -880,10 +896,17 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       const vbNow = flushVb();
       const end = r ? toWorld(e.clientX, e.clientY, r, vbNow) : toSvgCb(e.clientX, e.clientY);
       if (end && drag.vertex === -1) {
-        const moved = Math.hypot(end[0] - drag.start[0], end[1] - drag.start[1]);
-        if (moved >= 0.5) {
-          const done = finalTranslateForDrag(drag.orig, drag.start, end);
-          update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === done.id ? done : o)) }));
+        const dx = end[0] - drag.start[0];
+        const dy = end[1] - drag.start[1];
+        if (Math.hypot(dx, dy) >= 0.5) {
+          const done = translateObj(drag.orig, dx, dy);
+          update((d) => ({
+            ...d,
+            objects: d.objects.map((o) => {
+              if (o.id === done.id) return done;
+              return done.isSection ? translateSectionContents(o, done.id, dx, dy) : o;
+            }),
+          }));
         }
       } else if (drag && previewObj && drag.vertex >= 0) {
         const done = previewObj;

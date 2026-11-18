@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import App from '../App';
 import { emptyVenue } from '../lib/venue';
-import type { VenueObject } from '../lib/venue';
+import type { VenueDoc, VenueObject } from '../lib/venue';
 import { revalidateSeats } from '../lib/contain';
 import { parseVenueJson } from '../lib/validate';
 
@@ -48,6 +48,95 @@ it('preserves 1000 compact seats and their footprint through validation and JSON
   expect(restored.doc!.objects[1].seats[0].radius).toBe(1);
   const moved = { ...row,seats:[{...seats[0],x:100.5}] };
   expect(revalidateSeats([section,moved]).invalidCount).toBe(1);
+});
+
+it.each(['polygon', 'vector'])('moves section seats with a venue drag (%s)', async (shape) => {
+  const container: VenueObject = shape === 'polygon' ? section : {
+    ...section, kind: 'vector', points: [], d: 'M0 0H150V100H0Z',
+    vTransform: { tx: 100, ty: 100, scale: 2 },
+  };
+  const base = emptyVenue();
+  const legacyRow: VenueObject = {
+    ...section, id: 'legacy-row', kind: 'row-straight', isSection: false, closed: false,
+    points: [[160, 190]],
+    seats: [
+      { id: 'legacy-seat', row: 'A', number: '1', x: 160, y: 190, sectionId: section.id, status: 'taken', price: 0 },
+      { id: 'unassigned-seat', row: 'A', number: '2', x: 190, y: 190, sectionId: null, status: 'available', price: 0 },
+    ],
+  };
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 1200, height: 800 } as DOMRect);
+  vi.spyOn(Element.prototype, 'setPointerCapture').mockImplementation(() => {});
+  vi.spyOn(Element.prototype, 'hasPointerCapture').mockReturnValue(false);
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  cleanup = () => { act(() => root.unmount()); host.remove(); vi.restoreAllMocks(); };
+  localStorage.setItem('seat-poc-venue-v1', JSON.stringify({ ...base, objects: [container, legacyRow] }));
+  await act(async () => root.render(<App />));
+  const click = async (selector: string) => act(async () => (host.querySelector(selector) as HTMLButtonElement).click());
+  const save = async (): Promise<VenueDoc> => {
+    await click('[aria-label="Simpan lokal"]');
+    return JSON.parse(localStorage.getItem('seat-poc-venue-v1')!);
+  };
+  const svg = () => host.querySelector('svg.canvas')!;
+  const shapeTag = shape === 'polygon' ? 'polygon' : 'path';
+  const sectionShape = () => svg().querySelector(`[aria-label="Section A"] ${shapeTag}`)!;
+  const pointer = async (target: Element, type: string, x: number, y: number) => {
+    await act(async () => {
+      target.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 1 }));
+    });
+  };
+  await click('[aria-label="Muat simpanan lokal"]');
+  await act(async () => { sectionShape().dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); });
+  await click('[aria-label^="Baris kursi"]');
+  await pointer(svg(), 'pointerdown', 120, 120);
+  await pointer(svg(), 'pointermove', 260, 120);
+  await pointer(svg(), 'pointerup', 260, 120);
+  const before = await save();
+  const row = before.objects[2];
+  expect(row.seats.length).toBeGreaterThan(1);
+
+  const back = [...host.querySelectorAll('button')].find(b => b.textContent?.includes('Kembali ke venue'))!;
+  await act(async () => back.click());
+  await click('.dock [aria-label^="Select"]');
+  const scaleX = Number(svg().getAttribute('viewBox')!.split(' ')[2]) / 1200;
+  const scaleY = Number(svg().getAttribute('viewBox')!.split(' ')[3]) / 800;
+  const dx = 400 * scaleX;
+  const dy = 200 * scaleY;
+  await pointer(sectionShape(), 'pointerdown', 180, 160);
+  await pointer(svg(), 'pointermove', 380, 260);
+  await pointer(svg(), 'pointerup', 580, 360);
+
+  const after = await save();
+  const expectMovedSeat = (seat: VenueObject['seats'][number], original: VenueObject['seats'][number]) => {
+    expect(seat.x).toBeCloseTo(original.x + dx);
+    expect(seat.y).toBeCloseTo(original.y + dy);
+    expect(seat).toEqual({ ...original, x: seat.x, y: seat.y });
+  };
+  expect(after.objects[2].seats).toHaveLength(row.seats.length);
+  after.objects[2].seats.forEach((seat, i) => expectMovedSeat(seat, row.seats[i]));
+  expect(after.objects[2].points[0][0]).toBeCloseTo(row.points[0][0] + dx);
+  expect(after.objects[2].points[0][1]).toBeCloseTo(row.points[0][1] + dy);
+  expectMovedSeat(after.objects[1].seats[0], before.objects[1].seats[0]);
+  expect(after.objects[1].seats[1]).toEqual(before.objects[1].seats[1]);
+  if (shape === 'polygon') {
+    expect(after.objects[0].points[0][0]).toBeCloseTo(100 + dx);
+    expect(after.objects[0].points[0][1]).toBeCloseTo(100 + dy);
+  } else {
+    expect(after.objects[0].vTransform!.tx).toBeCloseTo(100 + dx);
+    expect(after.objects[0].vTransform!.ty).toBeCloseTo(100 + dy);
+  }
+  await click('[aria-label^="Urungkan"]');
+  expect((await save()).objects).toEqual(before.objects);
+  await click('[aria-label^="Ulangi"]');
+  expect((await save()).objects).toEqual(after.objects);
+  await act(async () => { sectionShape().dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); });
+  const movedSeat = after.objects[2].seats[0];
+  const dot = svg().querySelector(`[data-seat-id="${movedSeat.id}"]`)!;
+  expect(Number(dot.getAttribute('cx'))).toBeCloseTo(movedSeat.x);
+  expect(Number(dot.getAttribute('cy'))).toBeCloseTo(movedSeat.y);
 });
 
 it('single row ala seats.io: klik pasang jangkar, hover preview, klik kedua commit, seret gambar-dan-selesai, Esc batal', async () => {
