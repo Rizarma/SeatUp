@@ -16,6 +16,7 @@ import { markEligibility } from './lib/panelContext';
 import { saveLocal, loadLocal, downloadJson, readTextFile, readImageFile } from './lib/storage';
 import { saveBackground, loadBackground, clearBackground, hasBackgroundFlag, dataUrlToBlob } from './lib/bgImage';
 import { categoryPriceForSection } from './lib/categories';
+import { getDocIndex } from './lib/docIndex';
 import { StoreProvider, useStore } from './store';
 import type { Tool } from './store';
 import EditorCanvas from './components/EditorCanvas';
@@ -94,6 +95,14 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
   const [seatScale, setSeatScale] = useState(1);
   const [hoveredObjectId, setHoveredObjectId] = useState<string | null>(null);
   const { doc, tool, selectedId, selectedSeatIds } = state;
+  // Kait bench (?bench): paparkan seleksi + dokumen untuk verifikasi identitas
+  // (tanpa mengubah jalur produksi; hanya dibaca BenchApp).
+  useEffect(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('bench')) {
+      (window as unknown as { __seatupBenchSelected?: string[] }).__seatupBenchSelected = [...selectedSeatIds];
+      (window as unknown as { __seatupBenchSelectedObj?: string | null }).__seatupBenchSelectedObj = selectedId;
+    }
+  }, [selectedSeatIds, selectedId]);
 
   // Shortcut: V = Select, H = Hand (abaikan saat mengetik di input/textarea/select).
   // Lepaskan fokus dari tombol dock agar outline + tooltip tak menempel di ikon lama.
@@ -124,15 +133,18 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
   const effGeom = useMemo(() => (effSection ? sectionGeomFor(effSection) : null), [effSection]);
 
   const placementScale = activeFocusId ? seatScale : 1;
+  const docIndex = useMemo(() => getDocIndex(doc), [doc]);
   const capacity = useMemo(() => {
     if (!effGeom || !effSection || !activeFocusId) return null;
     const stepX = Math.max(8, Number.isFinite(rowForm.seatGap) ? rowForm.seatGap : 26) * placementScale;
     const stepY = Math.max(8, Number.isFinite(rowForm.rowGap) ? rowForm.rowGap : 34) * placementScale;
     const aisles = doc.objects.filter((o) => o.kind === 'aisle');
-    const existing = doc.objects.flatMap((o) => o.seats).filter((s) => s.sectionId === activeFocusId && !s.invalid).length;
+    const refs = docIndex.seatsBySection.get(activeFocusId);
+    let existing = 0;
+    if (refs) for (const r of refs) if (!r.seat.invalid) existing++;
     const est = estimateCapacity(effGeom, stepX, stepY, 8 * placementScale, aisles, existing);
     return { ...est, existing };
-  }, [effGeom, effSection, activeFocusId, rowForm.seatGap, rowForm.rowGap, placementScale, doc.objects]);
+  }, [effGeom, effSection, activeFocusId, rowForm.seatGap, rowForm.rowGap, placementScale, doc.objects, docIndex]);
   const enterSection = (id: string) => {
     const section = sections.find(o => o.id === id);
     const geom = section && sectionGeomFor(section);
@@ -344,7 +356,7 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
           <>
             <button onClick={leaveSection}><ArrowLeft size={16} /> Kembali ke venue</button>
             <strong>{focusedSection.label}</strong>
-            <span>{doc.objects.flatMap(o => o.seats).filter(s => s.sectionId === activeFocusId).length} kursi</span>
+            <span>{docIndex.seatsBySection.get(activeFocusId ?? '')?.length ?? 0} kursi</span>
             <label>Skala kursi baru <input aria-label="Skala kursi baru (%)" type="number" min={0.1} max={100} step={0.1}
               value={Number((seatScale * 100).toFixed(2))} onChange={e => { const n = Number(e.target.value); if (n >= 0.1 && n <= 100) setSeatScale(n / 100); }} /> %</label>
             {capacity && (

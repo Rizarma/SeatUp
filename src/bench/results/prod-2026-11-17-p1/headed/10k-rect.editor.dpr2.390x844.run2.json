@@ -1,0 +1,7 @@
+{
+  "tag": "10k-rect.editor.dpr2.390x844.run2",
+  "status": "harness_timeout",
+  "wallMs": 203595,
+  "perf": null,
+  "raw": "HARNESS_TIMEOUT: page.waitForFunction: Timeout 30000ms exceeded."
+}

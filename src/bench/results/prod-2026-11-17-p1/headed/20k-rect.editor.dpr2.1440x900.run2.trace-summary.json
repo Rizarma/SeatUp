@@ -1,0 +1,102 @@
+[
+  {
+    "name": "RunTask",
+    "ms": 1606.77
+  },
+  {
+    "name": "ThreadControllerImpl::RunTask",
+    "ms": 1598.11
+  },
+  {
+    "name": "FireAnimationFrame",
+    "ms": 1188.52
+  },
+  {
+    "name": "FunctionCall",
+    "ms": 1184.83
+  },
+  {
+    "name": "RunMicrotasks",
+    "ms": 849.47
+  },
+  {
+    "name": "EventDispatch",
+    "ms": 129.77
+  },
+  {
+    "name": "TimerFire",
+    "ms": 58.69
+  },
+  {
+    "name": "Layout",
+    "ms": 57.04
+  },
+  {
+    "name": "Paint",
+    "ms": 44.9
+  },
+  {
+    "name": "SimpleWatcher::OnHandleReady",
+    "ms": 43.59
+  },
+  {
+    "name": "MinorGC",
+    "ms": 40.47
+  },
+  {
+    "name": "V8.GC_SCAVENGER",
+    "ms": 38.83
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE",
+    "ms": 38.65
+  },
+  {
+    "name": "MajorGC",
+    "ms": 35.67
+  },
+  {
+    "name": "V8.GC_MARK_COMPACTOR",
+    "ms": 34.82
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE_PARALLEL_PHASE",
+    "ms": 33.54
+  },
+  {
+    "name": "UpdateLayoutTree",
+    "ms": 26.74
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE_PARALLEL",
+    "ms": 26.26
+  },
+  {
+    "name": "Layerize",
+    "ms": 24.11
+  },
+  {
+    "name": "V8.GC_MC_INCREMENTAL",
+    "ms": 23.73
+  },
+  {
+    "name": "PrePaint",
+    "ms": 21.09
+  },
+  {
+    "name": "V8.StackGuard",
+    "ms": 19.63
+  },
+  {
+    "name": "V8.HandleInterrupts",
+    "ms": 19.28
+  },
+  {
+    "name": "V8.GC_MC_MARK",
+    "ms": 18.53
+  },
+  {
+    "name": "V8.GC_MC_MARK_FULL_CLOSURE_PARALLEL",
+    "ms": 17.9
+  }
+]

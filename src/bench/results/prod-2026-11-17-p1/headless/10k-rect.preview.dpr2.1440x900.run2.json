@@ -1,0 +1,44 @@
+{
+  "tag": "10k-rect.preview.dpr2.1440x900.run2",
+  "status": "done",
+  "wallMs": 5025,
+  "perf": "pass",
+  "payload": {
+    "scenario": "10k-rect",
+    "mode": "preview",
+    "seats": 10000,
+    "shape": "rect",
+    "viewport": "1440x900",
+    "dpr": 2,
+    "device": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "buildRev": "prod-c3b1db5-dirty-7a6403784a92",
+    "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "method": "pointer-event nyata + dispatchAtStrict + paint 2xRAF; klik N>=100 identitas; 60 commit nyata; heap dua delta",
+    "acceptance": {
+      "functional": "pass",
+      "perf": "pass",
+      "reason": "pan 10k-rect (preview): p95 16.7ms <= target 20ms (36 frame)"
+    },
+    "steps": {
+      "load_via": "localStorage",
+      "pan_frame_avg_ms": 16.67,
+      "pan_frame_p95_ms": 16.7,
+      "pan_fps": 60,
+      "pan_frames": 36,
+      "hover_150x_ms": 283.1,
+      "taken_click_ok": "ok",
+      "click_n": 100,
+      "click_median_ms": 33.2,
+      "click_p95_ms": 33.4,
+      "click_max_ms": 34,
+      "click_failures": 0,
+      "click_cover": "ok",
+      "click_method": "pointerdown..2xRAF paint, verifikasi ID+subtotal via __seatupBenchPicks",
+      "click_picked": "ok",
+      "simulate_ms": 32.7,
+      "heap_mb": 15.6,
+      "pan_target_ms": 20,
+      "acceptance": "pass:pan 10k-rect (preview): p95 16.7ms <= target 20ms (36 frame)"
+    }
+  }
+}

@@ -1,0 +1,102 @@
+[
+  {
+    "name": "RunTask",
+    "ms": 3910.87
+  },
+  {
+    "name": "ThreadControllerImpl::RunTask",
+    "ms": 3891.21
+  },
+  {
+    "name": "FireAnimationFrame",
+    "ms": 3053.96
+  },
+  {
+    "name": "FunctionCall",
+    "ms": 3004.29
+  },
+  {
+    "name": "RunMicrotasks",
+    "ms": 2538.76
+  },
+  {
+    "name": "EventDispatch",
+    "ms": 579.26
+  },
+  {
+    "name": "Layout",
+    "ms": 142.55
+  },
+  {
+    "name": "SimpleWatcher::OnHandleReady",
+    "ms": 118.87
+  },
+  {
+    "name": "TimerFire",
+    "ms": 106.73
+  },
+  {
+    "name": "Paint",
+    "ms": 102.05
+  },
+  {
+    "name": "MinorGC",
+    "ms": 51.16
+  },
+  {
+    "name": "PrePaint",
+    "ms": 49.82
+  },
+  {
+    "name": "V8.GC_SCAVENGER",
+    "ms": 48.98
+  },
+  {
+    "name": "UpdateLayoutTree",
+    "ms": 48.85
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE",
+    "ms": 48.72
+  },
+  {
+    "name": "Layerize",
+    "ms": 45.59
+  },
+  {
+    "name": "Commit",
+    "ms": 44.52
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE_PARALLEL_PHASE",
+    "ms": 42.68
+  },
+  {
+    "name": "MajorGC",
+    "ms": 35.6
+  },
+  {
+    "name": "Receive mojo message",
+    "ms": 34.97
+  },
+  {
+    "name": "V8.GC_MARK_COMPACTOR",
+    "ms": 32.74
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE_PARALLEL",
+    "ms": 31.13
+  },
+  {
+    "name": "V8.StackGuard",
+    "ms": 30.59
+  },
+  {
+    "name": "V8.HandleInterrupts",
+    "ms": 30.1
+  },
+  {
+    "name": "HitTest",
+    "ms": 21.1
+  }
+]

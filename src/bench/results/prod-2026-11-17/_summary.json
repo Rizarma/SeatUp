@@ -1,0 +1,122 @@
+{
+  "rev": "prod-c3b1db5",
+  "base": "http://localhost:4173/",
+  "finishedAt": "2026-11-17T14:04:35.677Z",
+  "runs": [
+    {
+      "tag": "1k-rect.editor.dpr1.1440x900.run1",
+      "status": "done",
+      "wallMs": 25006
+    },
+    {
+      "tag": "1k-rect.editor.dpr1.1440x900.run2",
+      "status": "done",
+      "wallMs": 18409
+    },
+    {
+      "tag": "10k-rect.editor.dpr1.1440x900.run1",
+      "status": "bench_error",
+      "wallMs": 18538
+    },
+    {
+      "tag": "10k-rect.editor.dpr1.1440x900.run2",
+      "status": "bench_error",
+      "wallMs": 18673
+    },
+    {
+      "tag": "10k-rect.editor.dpr1.1440x900.run3",
+      "status": "bench_error",
+      "wallMs": 18248
+    },
+    {
+      "tag": "20k-rect.editor.dpr1.1440x900.run1",
+      "status": "bench_error",
+      "wallMs": 18226
+    },
+    {
+      "tag": "20k-rect.editor.dpr1.1440x900.run2",
+      "status": "bench_error",
+      "wallMs": 18362
+    },
+    {
+      "tag": "50k-rect.editor.dpr1.1440x900.run1",
+      "status": "done",
+      "wallMs": 18343
+    },
+    {
+      "tag": "50k-rect.editor.dpr1.1440x900.run2",
+      "status": "done",
+      "wallMs": 18263
+    },
+    {
+      "tag": "10k-complex.editor.dpr1.1440x900.run1",
+      "status": "bench_error",
+      "wallMs": 18334
+    },
+    {
+      "tag": "10k-complex.editor.dpr1.1440x900.run2",
+      "status": "bench_error",
+      "wallMs": 18299
+    },
+    {
+      "tag": "20k-elongated.editor.dpr1.1440x900.run1",
+      "status": "bench_error",
+      "wallMs": 18242
+    },
+    {
+      "tag": "20k-elongated.editor.dpr1.1440x900.run2",
+      "status": "bench_error",
+      "wallMs": 18446
+    },
+    {
+      "tag": "20k-12kblock.editor.dpr1.1440x900.run1",
+      "status": "bench_error",
+      "wallMs": 18418
+    },
+    {
+      "tag": "20k-12kblock.editor.dpr1.1440x900.run2",
+      "status": "bench_error",
+      "wallMs": 18237
+    },
+    {
+      "tag": "10k-rect.preview.dpr1.1440x900.run1",
+      "status": "done",
+      "wallMs": 10237
+    },
+    {
+      "tag": "10k-rect.preview.dpr1.1440x900.run2",
+      "status": "done",
+      "wallMs": 10204
+    },
+    {
+      "tag": "20k-rect.preview.dpr1.1440x900.run1",
+      "status": "done",
+      "wallMs": 913794
+    },
+    {
+      "tag": "10k-rect.editor.dpr2.1440x900.run1",
+      "status": "bench_error",
+      "wallMs": 43108
+    },
+    {
+      "tag": "10k-rect.editor.dpr2.1440x900.run2",
+      "status": "bench_error",
+      "wallMs": 18187
+    },
+    {
+      "tag": "20k-rect.editor.dpr2.1440x900.run1",
+      "status": "harness_timeout",
+      "wallMs": 695281
+    },
+    {
+      "tag": "10k-rect.editor.dpr2.390x844.run1",
+      "status": "done",
+      "wallMs": 11645
+    },
+    {
+      "tag": "10k-rect.preview.dpr2.1440x900.run1",
+      "status": "done",
+      "wallMs": 5131
+    }
+  ]
+}

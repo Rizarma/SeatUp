@@ -1,0 +1,102 @@
+[
+  {
+    "name": "RunTask",
+    "ms": 42.43
+  },
+  {
+    "name": "ThreadControllerImpl::RunTask",
+    "ms": 42.1
+  },
+  {
+    "name": "v8.evaluateModule",
+    "ms": 22.35
+  },
+  {
+    "name": "V8.StackGuard",
+    "ms": 8.92
+  },
+  {
+    "name": "V8.HandleInterrupts",
+    "ms": 8.92
+  },
+  {
+    "name": "V8.InvokeApiInterruptCallbacks",
+    "ms": 8.59
+  },
+  {
+    "name": "Layout",
+    "ms": 5.73
+  },
+  {
+    "name": "FunctionCall",
+    "ms": 1.68
+  },
+  {
+    "name": "ParseHTML",
+    "ms": 1.33
+  },
+  {
+    "name": "UpdateLayoutTree",
+    "ms": 1.29
+  },
+  {
+    "name": "SimpleWatcher::OnHandleReady",
+    "ms": 0.88
+  },
+  {
+    "name": "RunMicrotasks",
+    "ms": 0.64
+  },
+  {
+    "name": "ParseAuthorStyleSheet",
+    "ms": 0.56
+  },
+  {
+    "name": "MinorGC",
+    "ms": 0.53
+  },
+  {
+    "name": "V8.GC_SCAVENGER",
+    "ms": 0.45
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE",
+    "ms": 0.44
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE_PARALLEL_PHASE",
+    "ms": 0.36
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE_PARALLEL",
+    "ms": 0.32
+  },
+  {
+    "name": "Receive mojo message",
+    "ms": 0.14
+  },
+  {
+    "name": "EventDispatch",
+    "ms": 0.13
+  },
+  {
+    "name": "V8.BytecodeBudgetInterrupt",
+    "ms": 0.11
+  },
+  {
+    "name": "V8.BytecodeBudgetInterruptWithStackCheck",
+    "ms": 0.05
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE_ROOTS",
+    "ms": 0.04
+  },
+  {
+    "name": "BlinkScheduler_PerformMicrotaskCheckpoint",
+    "ms": 0.04
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE_FINALIZE",
+    "ms": 0.03
+  }
+]

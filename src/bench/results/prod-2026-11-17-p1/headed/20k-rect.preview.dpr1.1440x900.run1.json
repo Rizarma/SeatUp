@@ -1,0 +1,7 @@
+{
+  "tag": "20k-rect.preview.dpr1.1440x900.run1",
+  "status": "harness_timeout",
+  "wallMs": 4950,
+  "perf": null,
+  "raw": "HARNESS_TIMEOUT: page.waitForFunction: Target page, context or browser has been closed"
+}

@@ -1,0 +1,13 @@
+{
+  "rev": "prod-c3b1db5-dirty-b59a2c05bae3",
+  "base": "http://localhost:4173/",
+  "finishedAt": "2026-11-17T15:14:55.934Z",
+  "runs": [
+    {
+      "tag": "10k-rect.editor.dpr1.1440x900.run1.memfull",
+      "status": "done",
+      "wallMs": 24678,
+      "perf": "pass"
+    }
+  ]
+}

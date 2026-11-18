@@ -1,0 +1,46 @@
+[
+  {
+    "name": "RunTask",
+    "ms": 12.03
+  },
+  {
+    "name": "ThreadControllerImpl::RunTask",
+    "ms": 11.83
+  },
+  {
+    "name": "FunctionCall",
+    "ms": 11.6
+  },
+  {
+    "name": "V8.StackGuard",
+    "ms": 11.46
+  },
+  {
+    "name": "V8.HandleInterrupts",
+    "ms": 11.46
+  },
+  {
+    "name": "V8.InvokeApiInterruptCallbacks",
+    "ms": 11.46
+  },
+  {
+    "name": "SimpleWatcher::OnHandleReady",
+    "ms": 0.03
+  },
+  {
+    "name": "BlinkScheduler_PerformMicrotaskCheckpoint",
+    "ms": 0.02
+  },
+  {
+    "name": "V8.GC_HEAP_ENSURE_SWEEPING_COMPLETED",
+    "ms": 0.02
+  },
+  {
+    "name": "Receive mojo message",
+    "ms": 0.01
+  },
+  {
+    "name": "V8.GC_TIME_TO_SAFEPOINT",
+    "ms": 0.01
+  }
+]

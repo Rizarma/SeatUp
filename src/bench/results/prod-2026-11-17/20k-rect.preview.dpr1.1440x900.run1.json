@@ -1,0 +1,45 @@
+{
+  "tag": "20k-rect.preview.dpr1.1440x900.run1",
+  "scenario": "20k-rect",
+  "mode": "preview",
+  "dpr": 1,
+  "viewport": {
+    "w": 1440,
+    "h": 900
+  },
+  "run": 1,
+  "wallMs": 913794,
+  "status": "done",
+  "payload": {
+    "scenario": "20k-rect",
+    "mode": "preview",
+    "seats": 20000,
+    "shape": "rect",
+    "viewport": "1440x900",
+    "dpr": 1,
+    "device": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "buildRev": "prod-c3b1db5",
+    "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "method": "pointer-event nyata + dispatchAtStrict + paint 2xRAF; klik N>=100 identitas; 60 commit nyata; heap dua delta",
+    "steps": {
+      "load_via": "localStorage",
+      "pan_frame_avg_ms": 33.33,
+      "pan_frame_p95_ms": 33.4,
+      "pan_fps": 30,
+      "hover_150x_ms": 566,
+      "taken_click_ok": "ok",
+      "click_n": 100,
+      "click_median_ms": 66.5,
+      "click_p95_ms": 68.3,
+      "click_max_ms": 366.6,
+      "click_failures": 0,
+      "click_cover": "ok",
+      "click_method": "pointerdown..2xRAF paint, verifikasi ID+subtotal via __seatupBenchPicks",
+      "click_picked": "ok",
+      "simulate_ms": 65.9,
+      "heap_mb": 30.28
+    }
+  },
+  "partial": null,
+  "raw": "{\n  \"scenario\": \"20k-rect\",\n  \"mode\": \"preview\",\n  \"seats\": 20000,\n  \"shape\": \"rect\",\n  \"viewport\": \"1440x900\",\n  \"dpr\": 1,\n  \"device\": \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36\",\n  \"buildRev\": \"prod-c3b1db5\",\n  \"browser\": \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36\",\n  \"method\": \"pointer-event nyata + dispatchAtStrict + paint 2xRAF; klik N>=100 identitas; 60 commit nyata; heap dua delta\",\n  \"steps\": {\n    \"load_via\": \"localStorage\",\n    \"pan_frame_avg_ms\": 33.33,\n    \"pan_frame_p95_ms\": 33.4,\n    \"pan_fps\": 30,\n    \"hover_150x_ms\": 566,\n    \"taken_click_ok\": \"ok\",\n    \"click_n\": 100,\n    \"click_median_ms\": 66.5,\n    \"click_p95_ms\": 68.3,\n    \"click_max_ms\": 366.6,\n    \"click_failures\": 0,\n    \"click_cover\": \"ok\",\n    \"click_method\": \"pointerdown..2xRAF paint, verifikasi ID+subtotal via __seatupBenchPicks\",\n    \"click_picked\": \"ok\",\n    \"simulate_ms\": 65.9,\n    \"heap_mb\": 30.28\n  }\n}"
+}

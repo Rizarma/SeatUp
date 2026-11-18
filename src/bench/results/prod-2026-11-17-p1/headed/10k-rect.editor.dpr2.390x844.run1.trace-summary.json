@@ -1,0 +1,22 @@
+[
+  {
+    "name": "RunTask",
+    "ms": 0.14
+  },
+  {
+    "name": "ThreadControllerImpl::RunTask",
+    "ms": 0.07
+  },
+  {
+    "name": "SimpleWatcher::OnHandleReady",
+    "ms": 0.04
+  },
+  {
+    "name": "Receive mojo message",
+    "ms": 0.02
+  },
+  {
+    "name": "BlinkScheduler_PerformMicrotaskCheckpoint",
+    "ms": 0
+  }
+]

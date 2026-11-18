@@ -1,0 +1,26 @@
+{
+  "tag": "20k-rect.editor.dpr2.1440x900.run1",
+  "probe": {
+    "idle": {
+      "n": 175,
+      "avg": 16.67,
+      "p50": 16.7,
+      "p95": 18.2,
+      "max": 18.7,
+      "long50": 0
+    },
+    "busy": {
+      "n": 355,
+      "avg": 16.67,
+      "p50": 16.7,
+      "p95": 18.2,
+      "max": 18.6,
+      "long50": 0
+    },
+    "gestures": 361,
+    "vbChanged": true,
+    "vb0": "-11138.815165876778,-2064,23737.630331753557,17888",
+    "vb1": "-378393.8672985787,-185691.52606635093,23737.630331753557,17888"
+  },
+  "note": "idle 3s vs pan kontinu 6s, metode rAF sama; vbChanged membuktikan kamera bergerak"
+}

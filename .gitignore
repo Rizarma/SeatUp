@@ -29,6 +29,10 @@ dist-ssr
 /app/
 /src/lib/__fixtures__/seat-layout-gbk.svg
 /src/assets/
+
+# Benchmark raw artifacts (not published, regenerable via scripts/bench-run.mjs)
+/src/bench/results/archive-metodologi-lama/
+**/*.trace.json
 .env
 .env.*
 !.env.example
@@ -37,3 +41,12 @@ dist-ssr
 *.p12
 *.pfx
 credentials*.json
+
+# Build / test outputs (regenerable)
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+
+# Local manual benchmark runs (not published)
+/src/bench/results/manual/

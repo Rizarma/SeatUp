@@ -28,6 +28,59 @@ function clearOfAisles(x: number, y: number, radius: number, aisles: VenueObject
 }
 
 /**
+ * Cache total geometri (tak tergantung jumlah kursi existing).
+ * Kunci = signature geometri + langkah + lorong, sehingga:
+ * - label/category saja (geometri sama) => hit, tanpa hitung ulang,
+ * - geser lorong/titik/width/rotation => miss, hitung fresh,
+ * - undo/redo kembali ke kunci lama => hit yang benar.
+ * Map dibatasi (LRU sederhana) agar banyak edit tak tumbuh tanpa batas.
+ */
+const totalCache = new Map<string, number>();
+const TOTAL_CACHE_LIMIT = 128;
+
+/** Tes: bersihkan cache antar pengujian. */
+export function __clearCapacityCacheForTest(): void {
+  totalCache.clear();
+}
+
+/** Tes: ukuran cache (memastikan tak tumbuh tanpa batas). */
+export function __capacityCacheSizeForTest(): number {
+  return totalCache.size;
+}
+
+function geomSignature(geom: SectionGeom): string {
+  // Ringkas namun eksak untuk invalidasi: jumlah ring/titik + bbox + checksum koordinat.
+  let n = 0;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let acc = 0;
+  for (const ring of geom.rings) {
+    for (const p of ring) {
+      n++;
+      if (p[0] < minX) minX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] > maxY) maxY = p[1];
+      // checksum murah, dibulatkan 3 desimal agar stabil
+      acc = (acc * 31 + Math.round(p[0] * 1000) + Math.round(p[1] * 1000) * 7) | 0;
+    }
+  }
+  return `${geom.rings.length}:${n}:${geom.rule}:${minX.toFixed(3)},${minY.toFixed(3)},${maxX.toFixed(3)},${maxY.toFixed(3)}:${acc}`;
+}
+
+function aisleKey(aisles: VenueObject[]): string {
+  if (aisles.length === 0) return '-';
+  // Sertakan geometri lorong (points) agar geser/tambah titik menginvalidasi cache.
+  // Points dibulatkan 3 desimal: murah (lorong sedikit) dan stabil terhadap noise float.
+  return aisles.map((a) => {
+    const pts = (a.points ?? []).map((p) => `${Number(p[0]).toFixed(3)},${Number(p[1]).toFixed(3)}`).join(';');
+    return `${a.id}:${a.width ?? 28}:${a.rotation ?? 0}:${pts}`;
+  }).join('|');
+}
+
+/**
  * Estimasi slot kursi baris lurus yang muat di section.
  * Grid: kolom selebar stepX, baris setinggi stepY, footprint cakram radius.
  * Sama asumsi dengan tool row: footprint penuh harus di dalam section,
@@ -57,6 +110,12 @@ export function estimateCapacity(
   if (!Number.isFinite(cols * rows) || cols <= 0 || rows <= 0) {
     return { total: 0, remaining: 0, coarse: false };
   }
+  // Total geometri murni fungsi (geometri, langkah, lorong): cache global berbatas.
+  const key = `${geomSignature(geom)}|${sx}|${sy}|${r}|${aisleKey(aisles)}`;
+  const hit = totalCache.get(key);
+  if (hit !== undefined) {
+    return { total: hit, remaining: Math.max(0, hit - existingCount), coarse: false };
+  }
   if (cols * rows > 120000) {
     // Estimasi kasar: ukur fill-ratio lewat sampling 8px, lalu ekstrapolasi.
     const probe = 8;
@@ -85,5 +144,10 @@ export function estimateCapacity(
       total++;
     }
   }
+  if (totalCache.size >= TOTAL_CACHE_LIMIT) {
+    const oldest = totalCache.keys().next();
+    if (!oldest.done) totalCache.delete(oldest.value);
+  }
+  totalCache.set(key, total);
   return { total, remaining: Math.max(0, total - existingCount), coarse: false };
 }

@@ -1,0 +1,102 @@
+[
+  {
+    "name": "RunTask",
+    "ms": 50.12
+  },
+  {
+    "name": "ThreadControllerImpl::RunTask",
+    "ms": 49.58
+  },
+  {
+    "name": "v8.evaluateModule",
+    "ms": 23.85
+  },
+  {
+    "name": "Layout",
+    "ms": 8.02
+  },
+  {
+    "name": "V8.StackGuard",
+    "ms": 7.1
+  },
+  {
+    "name": "V8.HandleInterrupts",
+    "ms": 7.08
+  },
+  {
+    "name": "V8.InvokeApiInterruptCallbacks",
+    "ms": 6.78
+  },
+  {
+    "name": "RunMicrotasks",
+    "ms": 4.38
+  },
+  {
+    "name": "ParseHTML",
+    "ms": 3.51
+  },
+  {
+    "name": "FunctionCall",
+    "ms": 1.7
+  },
+  {
+    "name": "SimpleWatcher::OnHandleReady",
+    "ms": 1.52
+  },
+  {
+    "name": "UpdateLayoutTree",
+    "ms": 1.23
+  },
+  {
+    "name": "Receive mojo message",
+    "ms": 0.63
+  },
+  {
+    "name": "ParseAuthorStyleSheet",
+    "ms": 0.47
+  },
+  {
+    "name": "MinorGC",
+    "ms": 0.44
+  },
+  {
+    "name": "V8.GC_SCAVENGER",
+    "ms": 0.37
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE",
+    "ms": 0.36
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE_PARALLEL_PHASE",
+    "ms": 0.28
+  },
+  {
+    "name": "V8.BytecodeBudgetInterrupt",
+    "ms": 0.14
+  },
+  {
+    "name": "v8.compileModule",
+    "ms": 0.1
+  },
+  {
+    "name": "BlinkScheduler_PerformMicrotaskCheckpoint",
+    "ms": 0.1
+  },
+  {
+    "name": "EventDispatch",
+    "ms": 0.09
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE_ROOTS",
+    "ms": 0.04
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE_FINALIZE",
+    "ms": 0.03
+  },
+  {
+    "name": "V8.BytecodeBudgetInterruptWithStackCheck",
+    "ms": 0.02
+  }
+]

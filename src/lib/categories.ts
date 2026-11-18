@@ -52,30 +52,45 @@ export function categoryPriceForSection(objects: VenueObject[], categories: Tick
 export function syncCategoryPrices(doc: VenueDoc): VenueDoc {
   if (!Array.isArray(doc.categories) || doc.categories.length === 0) return doc;
   const byId = new Map(doc.categories.map((c) => [c.id, c]));
+  // Kategori pemilik per section (O(objects), bukan O(seats × objects)).
+  const ownerCat = new Map<string, { price: number; color: string }>();
+  for (const o of doc.objects) {
+    if (o.isSection && o.categoryId) {
+      const cat = byId.get(o.categoryId);
+      if (cat) ownerCat.set(o.id, cat);
+    }
+  }
+  if (ownerCat.size === 0) {
+    // Tetap selaraskan warna section lama bila kategorinya tak dikenal? tidak.
+    return doc;
+  }
   let changed = false;
   const objects = doc.objects.map((o) => {
     // Section: selaraskan warna simpanan lama dengan warna kategori (agar canvas lama tetap benar).
     if (o.isSection && o.categoryId && byId.has(o.categoryId)) {
       const cat = byId.get(o.categoryId)!;
-      const patch: Partial<VenueObject> = {};
-      if ((o.color ?? null) !== cat.color) patch.color = cat.color;
-      if (Object.keys(patch).length > 0) {
+      if ((o.color ?? null) !== cat.color) {
         changed = true;
-        return { ...o, ...patch };
+        return { ...o, color: cat.color };
       }
       return o;
     }
     // Baris: harga ngikut kategori section pemiliknya.
-    if ((o.kind === 'row-straight' || o.kind === 'row-arc') && o.sectionId && byId.size > 0) {
-      const owner = doc.objects.find((s) => s.id === o.sectionId && s.isSection);
-      const cat = owner?.categoryId ? byId.get(owner.categoryId) : undefined;
+    if ((o.kind === 'row-straight' || o.kind === 'row-arc') && o.sectionId) {
+      const cat = ownerCat.get(o.sectionId);
       if (cat) {
         const needRow = o.price !== cat.price;
-        const seats = o.seats.map((s) => (s.price !== cat.price ? { ...s, price: cat.price } : s));
-        const seatsChanged = seats.some((s, i) => s !== o.seats[i]);
+        let seatsChanged = false;
+        const seats = o.seats.map((s) => {
+          if (s.price !== cat.price) {
+            seatsChanged = true;
+            return { ...s, price: cat.price };
+          }
+          return s;
+        });
         if (needRow || seatsChanged) {
           changed = true;
-          return { ...o, price: cat.price, seats };
+          return { ...o, price: cat.price, seats: seatsChanged ? seats : o.seats };
         }
       }
     }
@@ -84,11 +99,12 @@ export function syncCategoryPrices(doc: VenueDoc): VenueDoc {
   // Seat yatim yang sectionId-nya menunjuk section berkategori (walau row-nya yatim): selaraskan juga.
   const finalObjects = objects.map((o) => {
     if (o.seats.length === 0) return o;
+    // Baris berkategori sudah disinkron di pass atas; lewati agar tak pindai ulang.
+    if ((o.kind === 'row-straight' || o.kind === 'row-arc') && o.sectionId && ownerCat.has(o.sectionId)) return o;
     let localChanged = false;
     const seats = o.seats.map((s) => {
       if (!s.sectionId) return s;
-      const owner = doc.objects.find((x) => x.id === s.sectionId && x.isSection);
-      const cat = owner?.categoryId ? byId.get(owner.categoryId) : undefined;
+      const cat = ownerCat.get(s.sectionId);
       if (cat && s.price !== cat.price) {
         localChanged = true;
         return { ...s, price: cat.price };

@@ -416,6 +416,138 @@ export function resolvedPoints(obj: VenueObject): Pt[] {
 }
 
 /**
+ * Uji apakah input geometri section berubah antara dua revisi objek.
+ * Referensi sama => bersih. Selain itu bandingkan field murah (tanpa flatten).
+ */
+function sectionGeomDirty(prev: VenueObject | undefined, next: VenueObject): boolean {
+  if (!prev) return true;
+  if (prev === next) return false;
+  if (prev.isSection !== next.isSection) return true;
+  if (prev.kind !== next.kind) return true;
+  if (prev.closed !== next.closed) return true;
+  if (prev.rotation !== next.rotation) return true;
+  if ((prev.d ?? null) !== (next.d ?? null)) return true;
+  const a = prev.vTransform;
+  const b = next.vTransform;
+  if ((a?.tx ?? 0) !== (b?.tx ?? 0) || (a?.ty ?? 0) !== (b?.ty ?? 0) || (a?.scale ?? 1) !== (b?.scale ?? 1) ||
+    ((a?.rotation ?? 0) !== (b?.rotation ?? 0))) return true;
+  if (prev.svgFillRule !== next.svgFillRule) return true;
+  const pa = prev.points;
+  const pb = next.points;
+  if (pa === pb) return false;
+  if (pa.length !== pb.length) return true;
+  for (let i = 0; i < pa.length; i++) {
+    if (pa[i][0] !== pb[i][0] || pa[i][1] !== pb[i][1]) return true;
+  }
+  return false;
+}
+
+/**
+ * Revalidasi inkremental: hanya kursi yang seat-nya bergerak ATAU geometri
+ * section pemiliknya berubah yang diuji ulang. Objek/sectionId yang bersih
+ * mempertahankan referensi (共 structural sharing, hemat memori history).
+ * Hasil invalid identik dengan revalidateSeats penuh.
+ */
+export function revalidateSeatsIncremental<T extends VenueObject>(
+  prevObjects: T[],
+  nextObjects: T[],
+): { objects: T[]; invalidCount: number } {
+  if (prevObjects === nextObjects) {
+    let invalidCount = 0;
+    for (const o of nextObjects) {
+      if (o.seats) for (const s of o.seats) if (s.invalid) invalidCount++;
+    }
+    return { objects: nextObjects, invalidCount };
+  }
+  const prevById = new Map<string, T>();
+  for (const o of prevObjects) prevById.set(o.id, o);
+  const nextById = new Map<string, T>();
+  for (const o of nextObjects) nextById.set(o.id, o);
+
+  // Tandai section yang geometrinya berubah (baru/diubah/dihapus).
+  const dirtySections = new Set<string>();
+  for (const o of nextObjects) {
+    if (sectionGeomDirty(prevById.get(o.id), o)) dirtySections.add(o.id);
+  }
+  for (const o of prevObjects) {
+    if (!nextById.has(o.id)) dirtySections.add(o.id);
+  }
+
+  const geomCache = new Map<string, SectionGeom | null>();
+  const geomOf = (id: string): SectionGeom | null => {
+    if (!geomCache.has(id)) {
+      const s = nextById.get(id);
+      geomCache.set(id, s ? sectionGeomFor(s) : null);
+    }
+    return geomCache.get(id) ?? null;
+  };
+
+  let invalidCount = 0;
+  let prevSeatById: Map<string, (typeof nextObjects)[number]['seats'][number]> | null = null;
+  const prevSeatOf = (id: string) => {
+    if (!prevSeatById) {
+      prevSeatById = new Map();
+      for (const o of prevObjects) {
+        if (o.seats) for (const s of o.seats) prevSeatById.set(s.id, s);
+      }
+    }
+    return prevSeatById.get(id);
+  };
+
+  const next = nextObjects.map((o) => {
+    if (!o.seats || o.seats.length === 0) return o;
+    const prevO = prevById.get(o.id);
+    const seatsSameRef = !!prevO && prevO.seats === o.seats;
+    // Bila array seats sama referensi, hanya perlu cek ulang bila ada seat
+    // yang section-nya kotor (atau flag yatim menyala).
+    let needsCheck = !seatsSameRef;
+    if (!needsCheck) {
+      needsCheck = o.seats.some((s) =>
+        (!s.sectionId && !!s.invalid) || (!!s.sectionId && dirtySections.has(s.sectionId)),
+      );
+    }
+    if (!needsCheck) {
+      for (const s of o.seats) if (s.invalid) invalidCount++;
+      return o;
+    }
+    let changed = false;
+    const seats = o.seats.map((s) => {
+      const prevS = prevSeatOf(s.id);
+      // Posisi + section tak berubah dan geometri section bersih (mis. edit
+      // label/harga/status saja) => flag invalid lama tetap valid, tanpa uji ulang.
+      const sectionClean = !!s.sectionId && !dirtySections.has(s.sectionId);
+      // samakan semantik revalidateSeats penuh: flag undefined selalu dimaterialisasi.
+      if (!!prevS && s.invalid !== undefined && sectionClean && prevS.x === s.x && prevS.y === s.y &&
+        (prevS.radius ?? SEAT_R) === (s.radius ?? SEAT_R) && prevS.sectionId === s.sectionId) {
+        if (s.invalid !== prevS.invalid) {
+          changed = true;
+          return { ...s, invalid: prevS.invalid };
+        }
+        if (s.invalid) invalidCount++;
+        return s;
+      }
+      if (!s.sectionId) {
+        if (s.invalid) {
+          changed = true;
+          return { ...s, invalid: false as boolean | undefined };
+        }
+        return s;
+      }
+      const g = geomOf(s.sectionId);
+      const bad = !g || !discInside(s.x, s.y, s.radius ?? SEAT_R, g);
+      if (bad) invalidCount++;
+      if (s.invalid === undefined || (s.invalid ?? false) !== bad) {
+        changed = true;
+        return { ...s, invalid: bad };
+      }
+      return s;
+    });
+    return changed ? { ...o, seats } : o;
+  });
+  return { objects: next, invalidCount };
+}
+
+/**
  * Hitung ulang flag invalid untuk seluruh kursi ber-sectionId.
  * Dipakai otomatis setiap commit agar edit section/row langsung konsisten.
  */

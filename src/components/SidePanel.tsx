@@ -17,6 +17,8 @@ import {
 import { withoutObject, withObject } from '../lib/docObjects';
 import { CommittedNum, CommittedText, CtxHead, Num, ObjGroup, useDebouncedValue } from './ui';
 import { useStore } from '../store';
+import { getDocIndex } from '../lib/docIndex';
+import { applyBulkSeatLabel } from '../lib/bulkEdit';
 
 interface Props {
   onHoverObject: (id: string | null) => void;
@@ -102,7 +104,27 @@ export default function SidePanel(p: Props) {
   const groupSections = doc.objects.filter((o) => o.isSection && matches(o));
   const groupRows = doc.objects.filter((o) => o.kind.startsWith('row') && matches(o));
   const groupOther = doc.objects.filter((o) => !o.isSection && !o.kind.startsWith('row') && matches(o));
-  const invalidTotal = doc.objects.flatMap((o) => o.seats).filter((s) => s.invalid).length;
+  // Agregat seat via indeks (sekali per perubahan doc, bukan per section/per render).
+  const index = getDocIndex(doc);
+  const seatStats = React.useMemo(() => {
+    let invalidTotal = 0;
+    const perSection = new Map<string, { n: number; bad: number }>();
+    for (const ref of index.allSeats) {
+      const s = ref.seat;
+      if (s.invalid) invalidTotal++;
+      if (s.sectionId) {
+        let e = perSection.get(s.sectionId);
+        if (!e) {
+          e = { n: 0, bad: 0 };
+          perSection.set(s.sectionId, e);
+        }
+        e.n++;
+        if (s.invalid) e.bad++;
+      }
+    }
+    return { invalidTotal, perSection };
+  }, [index]);
+  const invalidTotal = seatStats.invalidTotal;
 
   // CTA footer venue: baris invalid pada kelompok terpilih.
   // Mode section tidak pakai footer CTA — semua aksi sudah inline di panel.
@@ -127,7 +149,7 @@ export default function SidePanel(p: Props) {
   // pbody) agar tak menimpa judul panel saat scroll.
   const focusActive = p.focusId ? doc.objects.find((o) => o.id === p.focusId) ?? null : null;
   const focusSeatCount = focusActive
-    ? doc.objects.flatMap((o) => o.seats).filter((s) => s.sectionId === focusActive.id).length
+    ? (seatStats.perSection.get(focusActive.id)?.n ?? 0)
     : 0;
   const focusCat = focusActive?.categoryId ? categoryById(doc, focusActive.categoryId) : null;
 
@@ -205,14 +227,15 @@ export default function SidePanel(p: Props) {
                 ? <p className="muted">Belum ada section. Tandai polygon tertutup dari Properti.</p>
                 : <ul className="objlist">
                   {groupSections.map((s) => {
-                    const n = doc.objects.flatMap((o) => o.seats).filter((x) => x.sectionId === s.id);
-                    const bad = n.filter((x) => x.invalid).length;
+                    const stat = seatStats.perSection.get(s.id);
+                    const n = stat?.n ?? 0;
+                    const bad = stat?.bad ?? 0;
                     const dot = categoryColorForSection(doc.objects, doc.categories, s.id);
                     return (
                       <li key={s.id} onPointerEnter={() => p.onHoverObject(s.id)} onPointerLeave={() => p.onHoverObject(null)} onFocus={() => p.onHoverObject(s.id)} onBlur={() => p.onHoverObject(null)}>
                         <button className={s.id === selectedId ? 'on' : ''} onClick={() => { p.setSectionId(s.id); pickObject(s.id); }}>
                           <i aria-hidden="true" style={{ background: dot, width: 12, height: 12, borderRadius: '50%', flexShrink: 0, display: 'inline-block' }} />
-                          {s.label} · {n.length} kursi{bad > 0 ? ` · ${bad} invalid` : ''}
+                          {s.label} · {n} kursi{bad > 0 ? ` · ${bad} invalid` : ''}
                         </button>
                         <button type="button" className="icon-btn danger" aria-label={`Hapus ${s.label}`} title={`Hapus ${s.label}`} onClick={() => setPendingDeleteId(s.id)}>
                           <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
@@ -712,10 +735,15 @@ function kindDisplay(o: VenueObject): string {
 function SeatSelectionEditor() {
   const { state } = useStore();
   const { doc, selectedSeatIds } = state;
+  const index = getDocIndex(doc);
   const entries = React.useMemo(() => {
-    const byId = new Map(doc.objects.flatMap((o) => o.seats.map((s) => [s.id, { seat: s, objId: o.id }] as const)));
-    return selectedSeatIds.map((id) => byId.get(id)).filter((x) => !!x);
-  }, [doc.objects, selectedSeatIds]);
+    const out: Array<{ seat: Seat; objId: string }> = [];
+    for (const id of selectedSeatIds) {
+      const e = index.seatById.get(id);
+      if (e) out.push({ seat: e.seat, objId: e.objId });
+    }
+    return out;
+  }, [index, selectedSeatIds]);
   if (entries.length === 0) return null;
   return <SeatSelectionEditorInner key={selectedSeatIds.join(',')} entries={entries} />;
 }
@@ -748,16 +776,11 @@ function SeatSelectionEditorInner({ entries }: {
       return;
     }
     const ids = new Set(entries.map((e) => e.seat.id));
-    update((d) => ({
-      ...d,
-      objects: d.objects.map((o) => o.seats.some((s) => ids.has(s.id))
-        ? {
-          ...o,
-          seats: o.seats.map((s) => ids.has(s.id)
-            ? { ...s, row: wantRow ? rowDraft : s.row, number: wantNum ? numDraft : s.number }
-            : s),
-        }
-        : o),
+    // Seam produksi bersama (temuan P2 #2): transform yang sama dipakai
+    // runner bench + tes regresi (src/lib/bulkEdit.ts).
+    update((d) => applyBulkSeatLabel(d, ids, {
+      ...(wantRow ? { row: rowDraft } : {}),
+      ...(wantNum ? { number: numDraft } : {}),
     }));
     setMsg(`Tersimpan ${entries.length} kursi dalam 1 aksi undo.`);
   };
@@ -845,7 +868,7 @@ function FocusSectionLayout({ focusId, onEnterSection }: { focusId: string; onEn
   const foreignSection = selected && selected.isSection && selected.id !== focusId ? selected : null;
   const target = rowInFocus ?? active;
   const targetCount = target.isSection
-    ? doc.objects.flatMap((o) => o.seats).filter((s) => s.sectionId === focusId).length
+    ? (getDocIndex(doc).seatsBySection.get(focusId)?.length ?? 0)
     : target.seats.length;
   return (
     <section className="focus-section" aria-label="Susunan kursi section aktif">

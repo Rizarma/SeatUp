@@ -1,14 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Minus, Maximize } from 'lucide-react';
-import type { Pt, VenueObject } from '../lib/venue';
+import type { Pt, Seat, VenueObject } from '../lib/venue';
 import { uid } from '../lib/venue';
 import { fitViewBox, toWorld, viewBoxStr } from '../lib/camera';
-import { getGridLevels, minorOpacity } from '../lib/grid';
 import type { ViewBox } from '../lib/camera';
+import { getGridLevels, minorOpacity } from '../lib/grid';
+import { resizePreserveScale } from '../lib/viewTransform';
 import { resolvedPoints, sectionGeomFor, shapeCenter, vectorCanvasCenter } from '../lib/contain';
-import { categoryColorForSection } from '../lib/categories';
 import { bboxOf, normalizeAngle, rotatePoints, rotateShapeBy, rotationOf, toPointsString, translatePoints } from '../lib/geometry';
 import { useStore } from '../store';
+import { getDocIndex, queryBox, queryBoxVisible, queryPoint, type SeatRef } from '../lib/docIndex';
+import { cullMargin, lodFor } from '../lib/viewTransform';
+import SeatCanvas, { type SeatCanvasHandle } from './SeatCanvas';
+import type { OverlaySpec, SeatDrawSpec } from '../lib/seatCanvas';
 
 export const STATUS_COLOR: Record<string, string> = {
   available: '#22c55e',
@@ -16,6 +20,10 @@ export const STATUS_COLOR: Record<string, string> = {
   book: '#f59e0b',
   taken: '#9ca3af',
 };
+
+/** Batas seat SVG→Canvas: di atas ini kursi dirender Canvas 2D + hit-test indeks. */
+export const CANVAS_SEAT_THRESHOLD = 1500;
+const EMPTY_GHOSTS: Array<{ x: number; y: number; ok: boolean }> = [];
 
 /** Ghost gambar: 'stage' = kotak panggung, 'rect' = kotak vektor, 'circle' = lingkaran vektor, 'aisle' = garis lorong. */
 interface Ghost {
@@ -45,6 +53,98 @@ interface Props {
   aisleWidth: number;
 }
 
+/**
+ * Hit-test baris untuk tool Select pada mode Canvas: resolve seat -> objek baris pemilik.
+ * Seam regresi temuan #1 (diuji langsung tanpa DOM).
+ */
+export function resolveCanvasRowHit(
+  idx: { seatById: Map<string, { seat: { sectionId?: string | null }; objId: string }>; objectById: Map<string, VenueObject> },
+  seatId: string,
+  focusId: string | null,
+): VenueObject | null {
+  const entry = idx.seatById.get(seatId);
+  if (!entry) return null;
+  if (!focusId || entry.seat.sectionId !== focusId) return null;
+  const obj = idx.objectById.get(entry.objId);
+  if (!obj) return null;
+  if (obj.kind !== 'row-straight' && obj.kind !== 'row-arc') return null;
+  return obj;
+}
+
+/** Objek akhir drag-translate dari posisi pointerup (bukan preview satu frame tertinggal). */
+export function finalTranslateForDrag(orig: VenueObject, start: Pt, end: Pt): VenueObject {
+  return translateObj(orig, end[0] - start[0], end[1] - start[1]);
+}
+
+/**
+ * Kepemilikan renderer eksplisit (temuan P2 #2): setiap seat existing hanya
+ * digambar oleh SATU renderer agar opacity/status tak ganda.
+ * - baseOwner: 'canvas' bila existing >1500, selain itu 'svg'.
+ * - ghostOwner: 'canvas' bila kandidat >500 (tool row/multirow + anchor),
+ *   'svg' bila <=500, null bila tak ada ghost aktif.
+ * - ghost-only Canvas (base svg + ghost canvas): builder base Canvas HARUS
+ *   kosong; overlay Canvas HANYA ghost (seleksi/hover tetap SVG).
+ * - base Canvas: SVG baris mengembalikan null; Canvas menggambar base +
+ *   overlay (seleksi/hover/ghost).
+ */
+export type SeatRenderer = 'canvas' | 'svg';
+export function seatBaseOwner(existingCount: number): SeatRenderer {
+  return existingCount > CANVAS_SEAT_THRESHOLD ? 'canvas' : 'svg';
+}
+export function ghostOwner(
+  tool: string,
+  anchor: unknown,
+  ghostCount: number,
+): SeatRenderer | null {
+  if (!anchor) return null;
+  if (tool !== 'row' && tool !== 'multirow') return null;
+  if (ghostCount <= 0) return null;
+  return ghostCount > 500 ? 'canvas' : 'svg';
+}
+/** True bila lapisan dasar seat dimiliki Canvas (bukan ghost-only). */
+export function isBaseOnCanvas(existingCount: number): boolean {
+  return seatBaseOwner(existingCount) === 'canvas';
+}
+/** True bila overlay seleksi/hover dimiliki Canvas (sama dengan base). */
+export function isSelectionOnCanvas(existingCount: number): boolean {
+  return seatBaseOwner(existingCount) === 'canvas';
+}
+
+/**
+ * Kompatibilitas: nama lama untuk "ghost butuh Canvas".
+ * @deprecated pakai ghostOwner() agar kepemilikan eksplisit.
+ */
+export function needsGhostCanvas(tool: string, anchor: unknown, ghostCount: number): boolean {
+  return ghostOwner(tool, anchor, ghostCount) === 'canvas';
+}
+
+/** Jenis overlay per kandidat ghost (hijau=valid, merah=ditolak). */
+export function ghostOverlayKinds(ghosts: Array<{ ok: boolean }>): string[] {
+  return ghosts.map((g) => (g.ok ? 'ghost-ok' : 'ghost-bad'));
+}
+
+/**
+ * Hash visual ghost: berubah bila koordinat ATAU validitas berubah,
+ * walau jumlah kandidat tetap. Dipakai overlayRev agar overlay redraw
+ * tanpa membangun ulang base. FNV-1a atas (x,y,ok) terkuantisasi 1e3
+ * agar stabil terhadap noise float sub-pixel.
+ */
+export function ghostVisualHash(ghosts: Array<{ x: number; y: number; ok: boolean }>): number {
+  let h = 0x811c9dc5;
+  const mix = (v: number) => {
+    h ^= v & 0xffffffff;
+    h = Math.imul(h, 0x01000193);
+  };
+  mix(ghosts.length);
+  for (let i = 0; i < ghosts.length; i++) {
+    const g = ghosts[i];
+    mix(Math.round(g.x * 1000));
+    mix(Math.round(g.y * 1000));
+    mix(g.ok ? 1 : 0);
+  }
+  return h >>> 0;
+}
+
 function translateObj(o: VenueObject, dx: number, dy: number): VenueObject {
   const moved = {
     ...o,
@@ -63,15 +163,56 @@ function translateObj(o: VenueObject, dx: number, dy: number): VenueObject {
   return moved;
 }
 
+/** Lingkaran seat dasar (memo: hanya render ulang bila props primitif berubah). */
+const SeatBaseDot = memo(function SeatBaseDot({ s, fill, dimmed, interactive, seatId }: {
+  s: Seat; fill: string; dimmed: boolean; interactive: boolean; seatId: string;
+}) {
+  return (
+    <circle cx={s.x} cy={s.y} r={(s.radius ?? 8) * 0.875} fill={fill} opacity={dimmed ? 0.45 : 0.9}
+      data-seat-id={seatId}
+      style={interactive ? { cursor: 'pointer' } : undefined}>
+      <title>{`${s.row}${s.number}`}</title>
+    </circle>
+  );
+});
+
+/** Satu kelompok baris: base memo + delegasi event di <g> (tanpa closure per seat). */
+const RowSeatsGroup = memo(function RowSeatsGroup({ rowObj, color, interactive, onSeatDown, onSeatOver, onSeatOut }: {
+  rowObj: VenueObject; color: string; interactive: boolean;
+  onSeatDown: (e: React.PointerEvent) => void;
+  onSeatOver: (e: React.PointerEvent) => void;
+  onSeatOut: (e: React.PointerEvent) => void;
+}) {
+  return (
+    <g onPointerDown={interactive ? onSeatDown : undefined}
+      onPointerOver={interactive ? onSeatOver : undefined}
+      onPointerOut={interactive ? onSeatOut : undefined}>
+      {rowObj.seats.map((s) => {
+        const fill = s.invalid ? '#dc2626' : color;
+        const dimmed = !s.invalid && (s.status === 'taken' || s.status === 'book');
+        return <SeatBaseDot key={s.id} s={s} fill={fill} dimmed={dimmed} interactive={interactive} seatId={s.id} />;
+      })}
+    </g>
+  );
+});
+
 export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRowRelease, onRowHover, onRowTapCommit, onCancelRowDrag, focusId, onFocusSection, seatRadius, anchor, onAnchor, showBg, ghosts, aisleWidth }: Props) {
   const { state, update, select, selectSeats, setTool } = useStore();
   const { doc, tool, selectedId, selectedSeatIds } = state;
-  const selectedSeatSet = useMemo(() => new Set(selectedSeatIds), [selectedSeatIds]);
   const svgRef = useRef<SVGSVGElement>(null);
   const [canvasHoverId, setCanvasHoverId] = useState<string | null>(null);
   const [hoverSeatId, setHoverSeatId] = useState<string | null>(null);
   const rowGesture = useRef<{ start: Pt; clientX: number; clientY: number; pointerId: number; dragged: boolean; hadAnchor: boolean } | null>(null);
-  useEffect(() => { rowGesture.current = null; seatGesture.current = null; setSeatMarquee(null); onCancelRowDrag(); setCanvasHoverId(null); setHoverSeatId(null); }, [tool, focusId, onCancelRowDrag]);
+  /** True bila gesture drag objek aktif dibatalkan (Esc/cancel): pointerup berikutnya wajib nol commit. */
+  const dragCancelledRef = useRef(false);
+  /** pointerId yang memegang capture saat drag objek (untuk dilepas aman saat batal). */
+  const dragPointerRef = useRef<number | null>(null);
+  /** Mulai gesture drag objek baru: reset flag batal agar gesture berikutnya tetap berfungsi. */
+  const beginObjectDrag = useCallback((pointerId: number | null) => {
+    dragCancelledRef.current = false;
+    dragPointerRef.current = pointerId;
+  }, []);
+  useEffect(() => { rowGesture.current = null; seatGesture.current = null; setSeatMarquee(null); onCancelRowDrag(); setCanvasHoverId(null); setHoverSeatId(null); hoverSeatRef.current = null; focusSeatRef.current = null; dragCancelledRef.current = true; dragPointerRef.current = null; setDrag(null); setScaleDrag(null); setRotateDrag(null); setPreviewObj(null); }, [tool, focusId, onCancelRowDrag]);
   const [draft, setDraft] = useState<Pt[]>([]);
   const [ghost, setGhost] = useState<Ghost | null>(null);
   const [drag, setDrag] = useState<
@@ -90,50 +231,159 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
   const seatTap = useRef<{ id: string; t: number } | null>(null);
   const selVecRef = useRef<SVGGElement>(null);
   // Kamera: viewBox mengikuti aspek kontainer (tak ada letterbox). World = unit doc.
+  // vbRef = sumber kebenaran terbaru (termasuk frame yang belum di-commit ke state).
   const [vb, setVb] = useState<ViewBox>({ x: 0, y: 0, w: doc.width, h: doc.height });
+  const vbRef = useRef(vb);
+  vbRef.current = vb;
+  const pendingVb = useRef<ViewBox | null>(null);
+  const camRaf = useRef(0);
+  const [cssW, setCssW] = useState(1000);
+  const [, setCssH] = useState(700);
+  const cssRef = useRef({ w: 1000, h: 700 });
+  /** Terapkan viewBox langsung (tombol/zoom/fit/keyboard). */
+  const applyVbSync = useCallback((next: ViewBox) => {
+    pendingVb.current = null;
+    if (camRaf.current !== 0 && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(camRaf.current);
+      camRaf.current = 0;
+    }
+    vbRef.current = next;
+    setVb(next);
+  }, []);
+  /** Coalesce per-pointermove: maksimal 1 setVb per frame, tanpa antrean. */
+  const scheduleVb = useCallback((next: ViewBox) => {
+    pendingVb.current = next;
+    if (camRaf.current !== 0) return;
+    if (typeof requestAnimationFrame !== 'function') {
+      pendingVb.current = null;
+      vbRef.current = next;
+      setVb(next);
+      return;
+    }
+    camRaf.current = requestAnimationFrame(() => {
+      camRaf.current = 0;
+      const p = pendingVb.current;
+      pendingVb.current = null;
+      if (p) {
+        vbRef.current = p;
+        setVb(p);
+      }
+    });
+  }, []);
+  /** Pakai posisi akhir terbaru walau frame terjadwal belum berjalan. */
+  const flushVb = useCallback(() => {
+    const p = pendingVb.current;
+    pendingVb.current = null;
+    if (camRaf.current !== 0 && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(camRaf.current);
+      camRaf.current = 0;
+    }
+    if (p) {
+      vbRef.current = p;
+      setVb(p);
+      return p;
+    }
+    return vbRef.current;
+  }, []);
+  useEffect(() => () => {
+    if (camRaf.current !== 0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(camRaf.current);
+  }, []);
   const savedVenueView = useRef<ViewBox | null>(null);
   const previousFocus = useRef<string | null>(null);
-  const pan = useRef<{ x: number; y: number; vb: ViewBox } | null>(null);
-  const focused = doc.objects.find(o => o.id === focusId);
-  const sectionColor = (id: string): string => categoryColorForSection(doc.objects, doc.categories, id);
+  // rectW/H di-cache saat gesture mulai agar pan tak memaksa layout per-move.
+  const pan = useRef<{ x: number; y: number; vb: ViewBox; rectW: number; rectH: number } | null>(null);
+
+  // Indeks turunan doc (WeakMap: O(1) bila doc tak berubah — kamera/hover tak membangun ulang).
+  const index = getDocIndex(doc);
+  const focused = index.objectById.get(focusId ?? '') ?? doc.objects.find(o => o.id === focusId);
+  const sectionColor = useCallback((id: string): string => index.sectionColor.get(id) ?? '#94a3b3', [index]);
   const focusGeom = useMemo(() => focused ? sectionGeomFor(focused) : null, [focused]);
+  const focusSeatCount = focusId ? (index.seatsBySection.get(focusId)?.length ?? 0) : 0;
+  const seatsAsCanvas = focusSeatCount > CANVAS_SEAT_THRESHOLD;
+  const lod = lodFor(vb, cssW, seatRadius);
+  // Hover kanvas-mode: ref (bukan state) agar tak me-render ulang seluruh scene.
+  const hoverSeatRef = useRef<SeatRef | null>(null);
+  const focusSeatRef = useRef<SeatRef | null>(null);
+  const hoverRaf = useRef(0);
+  const hoverPending = useRef<{ x: number; y: number } | null>(null);
+  const seatCanvasRef = useRef<SeatCanvasHandle>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const liveRef = useRef<HTMLDivElement>(null);
+  const baseRefs = useRef<SeatRef[]>([]);
+  const specPool = useRef<SeatDrawSpec[]>([]);
+  // Revisi untuk redraw kanvas: naik tiap doc berubah (render-time derive, tanpa effect).
+  const prevDocRef = useRef(doc);
+  const baseRevRef = useRef(0);
+  if (prevDocRef.current !== doc) {
+    prevDocRef.current = doc;
+    baseRevRef.current += 1;
+    hoverSeatRef.current = null;
+    focusSeatRef.current = null;
+  }
+
   const fit = useCallback(() => {
     const el = svgRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
+    const cw = Math.max(1, r.width || 1000);
+    const ch = Math.max(1, r.height || 700);
+    cssRef.current = { w: cw, h: ch };
+    setCssW(cw);
+    setCssH(ch);
     if (focusGeom) {
       const box = bboxOf(focusGeom.rings.flat());
       if (!box) return;
-      setVb(fitViewBox(r.width, r.height, box.w * 1.3, box.h * 1.3, box.cx, box.cy));
-    } else setVb(fitViewBox(r.width, r.height, doc.width, doc.height));
-  }, [focusGeom, doc.width, doc.height]);
+      applyVbSync(fitViewBox(cw, ch, box.w * 1.3, box.h * 1.3, box.cx, box.cy));
+    } else applyVbSync(fitViewBox(cw, ch, doc.width, doc.height));
+  }, [focusGeom, doc.width, doc.height, applyVbSync]);
   const fitRef = useRef(fit);
   useEffect(() => { fitRef.current = fit; }, [fit]);
   useEffect(() => {
     if (previousFocus.current === focusId) return;
-    if (focusId && !previousFocus.current) savedVenueView.current = vb;
-    if (!focusId && savedVenueView.current) setVb(savedVenueView.current);
+    if (focusId && !previousFocus.current) savedVenueView.current = vbRef.current;
+    if (!focusId && savedVenueView.current) applyVbSync(savedVenueView.current);
     else fitRef.current();
     previousFocus.current = focusId;
+    dragCancelledRef.current = true; dragPointerRef.current = null;
     setDraft([]); setGhost(null); setDrag(null); setPreviewObj(null); setScaleDrag(null); setRotateDrag(null);
     setSeatMarquee(null); seatGesture.current = null;
+    hoverSeatRef.current = null; focusSeatRef.current = null;
     selectSeats([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId]);
+  // Unmount: jangan sisakan ghost/anchor/drag (commit/cancel/tool/section sudah via cancelRowDrag).
+  useEffect(() => () => {
+    try { onCancelRowDrag(); } catch { /* abaikan */ }
+    dragCancelledRef.current = true; dragPointerRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Resize kontainer: pertahankan pusat + zoom (tanpa letterbox), bukan fit ulang.
+  // Aspek vb selalu == aspek viewport sehingga SVG, Canvas, dan hit-test satu definisi.
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => fitRef.current());
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      const nw = Math.max(1, r.width || 1000);
+      const nh = Math.max(1, r.height || 700);
+      const prev = cssRef.current;
+      cssRef.current = { w: nw, h: nh };
+      setCssW(nw);
+      setCssH(nh);
+      const next = resizePreserveScale(vbRef.current, prev.w, prev.h, nw, nh);
+      if (next) applyVbSync(next);
+      else fitRef.current();
+    });
     ro.observe(el);
     return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc.width, doc.height]);
   const zoom = useCallback((factor: number, fx = 0.5, fy = 0.5) => {
-    setVb(v => {
-      const width = Math.max(2, Math.min(doc.width * 4, v.w * factor));
-      const k = width / v.w;
-      return { x: v.x + v.w * fx * (1 - k), y: v.y + v.h * fy * (1 - k), w: width, h: v.h * k };
-    });
-  }, [doc.width]);
+    const v = vbRef.current;
+    const width = Math.max(2, Math.min(doc.width * 4, v.w * factor));
+    const k = width / v.w;
+    applyVbSync({ x: v.x + v.w * fx * (1 - k), y: v.y + v.h * fy * (1 - k), w: width, h: v.h * k });
+  }, [doc.width, applyVbSync]);
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -141,12 +391,12 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       e.preventDefault();
       const r = svg.getBoundingClientRect();
       if (rowGesture.current) return;
-      zoom(Math.exp(Math.max(-100, Math.min(100, e.deltaY)) * 0.005), (e.clientX-r.left)/r.width, (e.clientY-r.top)/r.height);
+      zoom(Math.exp(Math.max(-100, Math.min(100, e.deltaY)) * 0.005), (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
     };
     svg.addEventListener('wheel', wheel, { passive: false });
     return () => svg.removeEventListener('wheel', wheel);
   }, [zoom]);
-  const selected = doc.objects.find((o) => o.id === selectedId) ?? null;
+  const selected = index.objectById.get(selectedId ?? '') ?? null;
 
   // ukur bbox vektor terpilih (koordinat path) -> konversi ke kanvas
   useEffect(() => {
@@ -170,11 +420,47 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     }
   }, [selected]);
 
-  const toSvgCb = useCallback((e: React.PointerEvent<SVGSVGElement>): Pt | null => {
+  const toSvgCb = useCallback((clientX: number, clientY: number): Pt | null => {
     if (!svgRef.current) return null;
     const r = svgRef.current.getBoundingClientRect();
-    return toWorld(e.clientX, e.clientY, r, vb);
-  }, [vb]);
+    return toWorld(clientX, clientY, r, vbRef.current);
+  }, []);
+
+  // Seleksi terbaru untuk handler stabil (tanpa mengikat identitas array ke memo).
+  const selIdsRef = useRef(selectedSeatIds);
+  selIdsRef.current = selectedSeatIds;
+
+  /** Klik kursi: tunggal = sebaris, ganda cepat = 1 kursi, modifier = toggle satuan. */
+  const activateSeat = useCallback((seatId: string, additive: boolean) => {
+    const entry = index.seatById.get(seatId);
+    if (!entry) return;
+    if (!focusId || entry.seat.sectionId !== focusId) return;
+    const rowObj = index.objectById.get(entry.objId);
+    if (!rowObj) return;
+    focusSeatRef.current = entry;
+    if (additive) {
+      const next = new Set(selIdsRef.current);
+      if (next.has(seatId)) next.delete(seatId);
+      else next.add(seatId);
+      selectSeats([...next]);
+      seatTap.current = null;
+    } else {
+      // Klik tunggal = seluruh barisnya; klik ganda cepat = 1 kursi itu saja.
+      const now = Date.now();
+      const last = seatTap.current;
+      if (last && last.id === seatId && now - last.t < 400) {
+        seatTap.current = null;
+        selectSeats([seatId]);
+      } else {
+        seatTap.current = { id: seatId, t: now };
+        selectSeats(rowObj.seats.map((x) => x.id));
+      }
+    }
+    // cegah marquee mulai dari kursi (kanvas-mode: pemanggil belum memulai gesture)
+    seatGesture.current = null;
+    setSeatMarquee(null);
+    seatCanvasRef.current?.requestRedraw();
+  }, [index, focusId, selectSeats]);
 
   const commitPolygon = useCallback((pts: Pt[]) => {
     if (pts.length < 3) return;
@@ -206,11 +492,31 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         onCancelRowDrag();
         setDraft([]);
         setGhost(null);
+        // Batal penuh drag objek: flag + state + preview + capture + frame hover.
+        dragCancelledRef.current = true;
+        const pid = dragPointerRef.current;
+        dragPointerRef.current = null;
+        setDrag(null);
+        setScaleDrag(null);
         setRotateDrag(null);
         setPreviewObj(null);
+        try {
+          const svg = svgRef.current;
+          if (svg && pid !== null && typeof svg.hasPointerCapture === 'function' && svg.hasPointerCapture(pid)) {
+            svg.releasePointerCapture(pid);
+          }
+        } catch { /* abaikan: capture mungkin sudah lepas */ }
+        if (hoverRaf.current !== 0 && typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(hoverRaf.current);
+          hoverRaf.current = 0;
+        }
+        hoverPending.current = null;
         onAnchor(null);
         selectSeats([]);
         select(null);
+        hoverSeatRef.current = null;
+        focusSeatRef.current = null;
+        seatCanvasRef.current?.requestRedraw();
         // Esc dua tahap ala Figma: pertama batalkan dulu, Esc berikutnya (tak ada kerja) pindah ke Select.
         if (!hadWork && tool !== 'select') setTool('select');
         // Lepaskan fokus dari tombol dock agar outline + tooltip tak menempel di ikon lama.
@@ -244,10 +550,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
   const onSvgPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.button === 1 || (e.button === 0 && (e.altKey || tool === 'hand'))) {
       e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId);
-      pan.current = { x: e.clientX, y: e.clientY, vb }; return;
+      const rc = e.currentTarget.getBoundingClientRect();
+      pan.current = { x: e.clientX, y: e.clientY, vb: flushVb(), rectW: Math.max(1, rc.width), rectH: Math.max(1, rc.height) }; return;
     }
     if (e.button !== 0) return;
-    const p = toSvgCb(e);
+    const p = toSvgCb(e.clientX, e.clientY);
     if (!p) return;
     if (tool === 'polygon') {
       setDraft((d) => [...d, p]);
@@ -256,13 +563,22 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     if (tool === 'row' || tool === 'multirow') {
       e.currentTarget.setPointerCapture(e.pointerId);
       const hadAnchor = anchor !== null;
-      rowGesture.current = { start:p, clientX:e.clientX, clientY:e.clientY, pointerId:e.pointerId, dragged:false, hadAnchor };
+      rowGesture.current = { start: p, clientX: e.clientX, clientY: e.clientY, pointerId: e.pointerId, dragged: false, hadAnchor };
       // Klik pertama memasang jangkar; klik berikutnya (ada jangkar) diurus
       // saat pointerup: tap = commit, seret = mulai ulang dari titik tekan.
       if (!hadAnchor) onAnchor(p);
       return;
     }
     if (tool === 'seat' && focusId) {
+      // Kanvas-mode: tak ada node DOM kursi — hit-test via indeks spasial.
+      if (seatsAsCanvas) {
+        const tol = Math.max(4, seatRadius + 2, vbRef.current.w / Math.max(1, cssW) * 6);
+        const hit = queryPoint(index, p[0], p[1], tol);
+        if (hit && hit.seat.sectionId === focusId) {
+          activateSeat(hit.seat.id, e.shiftKey || e.metaKey || e.ctrlKey);
+          return;
+        }
+      }
       e.currentTarget.setPointerCapture(e.pointerId);
       seatGesture.current = {
         start: p, clientX: e.clientX, clientY: e.clientY, pointerId: e.pointerId,
@@ -280,17 +596,85 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       setGhost({ kind, a: p, b: p });
       return;
     }
+    // Tool Select pada mode Canvas: grup baris SVG dihilangkan, jadi hit-test
+    // manual via indeks -> resolve ke objek baris pemiliknya.
+    if (tool === 'select' && focusId && seatsAsCanvas) {
+      const tol = Math.max(4, seatRadius + 2, vbRef.current.w / Math.max(1, cssW) * 6);
+      const hit = queryPoint(index, p[0], p[1], tol);
+      const rowObj = hit ? resolveCanvasRowHit(index, hit.seat.id, focusId) : null;
+      if (rowObj) {
+        select(rowObj.id);
+        e.currentTarget.setPointerCapture(e.pointerId);
+        beginObjectDrag(e.pointerId);
+        setDrag({ id: rowObj.id, vertex: -1, orig: rowObj, start: p });
+        setPreviewObj(null);
+        return;
+      }
+    }
     select(null);
     if (focusId) selectSeats([]);
   };
 
-  const onSvgPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (pan.current) {
-      const r = e.currentTarget.getBoundingClientRect(), start = pan.current;
-      setVb({ ...start.vb, x: start.vb.x - (e.clientX-start.x)*start.vb.w/r.width, y: start.vb.y - (e.clientY-start.y)*start.vb.h/r.height });
+  const processHover = useCallback((clientX: number, clientY: number) => {
+    const el = svgRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const w = toWorld(clientX, clientY, r, vbRef.current);
+    const tol = Math.max(4, seatRadius + 2, vbRef.current.w / Math.max(1, r.width) * 6);
+    const hit = queryPoint(index, w[0], w[1], tol);
+    const inFocus = hit && hit.seat.sectionId === focusId ? hit : null;
+    const prevId = hoverSeatRef.current?.seat.id ?? null;
+    const nextId = inFocus?.seat.id ?? null;
+    if (prevId !== nextId) {
+      hoverSeatRef.current = inFocus;
+      const tip = tooltipRef.current;
+      if (tip) {
+        if (inFocus) {
+          const wrap = tip.parentElement?.getBoundingClientRect();
+          const k = Math.max(1, r.width) / Math.max(1, vbRef.current.w);
+          const sx = (inFocus.seat.x - vbRef.current.x) * k;
+          const sy = (inFocus.seat.y - vbRef.current.y) * k;
+          const dx = wrap ? r.left - wrap.left : 0;
+          const dy = wrap ? r.top - wrap.top : 0;
+          tip.style.display = 'block';
+          tip.style.transform = `translate(${dx + sx + 12}px, ${dy + sy - 12}px)`;
+          tip.textContent = `${inFocus.seat.row}${inFocus.seat.number}`;
+        } else {
+          tip.style.display = 'none';
+        }
+      }
+      seatCanvasRef.current?.requestRedraw();
+    }
+  }, [index, focusId, seatRadius]);
+
+  const scheduleHover = useCallback((clientX: number, clientY: number) => {
+    hoverPending.current = { x: clientX, y: clientY };
+    if (hoverRaf.current !== 0) return;
+    if (typeof requestAnimationFrame !== 'function') {
+      const p = hoverPending.current;
+      hoverPending.current = null;
+      if (p) processHover(p.x, p.y);
       return;
     }
-    const p = toSvgCb(e);
+    hoverRaf.current = requestAnimationFrame(() => {
+      hoverRaf.current = 0;
+      const p = hoverPending.current;
+      hoverPending.current = null;
+      if (p) processHover(p.x, p.y);
+    });
+  }, [processHover]);
+
+  useEffect(() => () => {
+    if (hoverRaf.current !== 0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(hoverRaf.current);
+  }, []);
+
+  const onSvgPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (pan.current) {
+      const start = pan.current;
+      scheduleVb({ ...start.vb, x: start.vb.x - (e.clientX - start.x) * start.vb.w / start.rectW, y: start.vb.y - (e.clientY - start.y) * start.vb.h / start.rectH });
+      return;
+    }
+    const p = toSvgCb(e.clientX, e.clientY);
     if (!p) return;
     const gesture = rowGesture.current;
     if (gesture && gesture.pointerId === e.pointerId) {
@@ -306,6 +690,10 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     // Hover preview baris/blok: kursor tanpa tombol = ujung preview.
     if ((tool === 'row' || tool === 'multirow') && focusId && e.buttons === 0 && !scaleDrag && !rotateDrag && !drag && !ghost) {
       onRowHover(p);
+    }
+    // Hover kursi kanvas-mode: via indeks, tanpa setState React.
+    if (seatsAsCanvas && tool === 'seat' && focusId && e.buttons === 0 && !scaleDrag && !rotateDrag && !drag && !ghost) {
+      scheduleHover(e.clientX, e.clientY);
     }
     if (ghost) {
       setGhost({ ...ghost, b: p });
@@ -359,9 +747,9 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       let ddx = dx;
       let ddy = dy;
       if (rot !== 0) {
-        const r = rotatePoints([[dx, dy]], -rot, 0, 0)[0];
-        ddx = r[0];
-        ddy = r[1];
+        const rr = rotatePoints([[dx, dy]], -rot, 0, 0)[0];
+        ddx = rr[0];
+        ddy = rr[1];
       }
       const pts = drag.orig.points.slice();
       pts[drag.vertex] = [drag.orig.points[drag.vertex][0] + ddx, drag.orig.points[drag.vertex][1] + ddy];
@@ -375,7 +763,9 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     const gesture = rowGesture.current;
     if (gesture && gesture.pointerId === e.pointerId) {
       rowGesture.current = null;
-      const end = toSvgCb(e);
+      const vbNow = flushVb();
+      const r = svgRef.current?.getBoundingClientRect();
+      const end = r ? toWorld(e.clientX, e.clientY, r, vbNow) : toSvgCb(e.clientX, e.clientY);
       const moved = Math.hypot(e.clientX - gesture.clientX, e.clientY - gesture.clientY) >= 5;
       if (end && (gesture.dragged || moved)) onRowRelease(gesture.start, end);
       else if (end && gesture.hadAnchor) onRowTapCommit(end);
@@ -387,7 +777,9 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     const sg2 = seatGesture.current;
     if (sg2 && sg2.pointerId === e.pointerId) {
       seatGesture.current = null;
-      const end = toSvgCb(e) ?? seatMarquee?.end ?? sg2.start;
+      const vbNow = flushVb();
+      const r = svgRef.current?.getBoundingClientRect();
+      const end = (r ? toWorld(e.clientX, e.clientY, r, vbNow) : toSvgCb(e.clientX, e.clientY)) ?? seatMarquee?.end ?? sg2.start;
       const pxMoved = Math.hypot(e.clientX - sg2.clientX, e.clientY - sg2.clientY);
       if (e.currentTarget.hasPointerCapture(e.pointerId)) {
         try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* abaikan */ }
@@ -402,13 +794,15 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         const x1 = Math.max(box.a[0], box.b[0]);
         const y0 = Math.min(box.a[1], box.b[1]);
         const y1 = Math.max(box.a[1], box.b[1]);
-        const inside = doc.objects
-          .filter((o) => !focusId || o.id === focusId || o.sectionId === focusId || o.seats.some((s) => s.sectionId === focusId))
-          .flatMap((o) => o.seats)
-          .filter((s) => (!focusId || s.sectionId === focusId) && s.x >= x0 && s.x <= x1 && s.y >= y0 && s.y <= y1)
-          .map((s) => s.id);
+        // Marquee via indeks spasial (bukan flatMap seluruh dokumen).
+        const refs = queryBox(index, x0, y0, x1, y1, []);
+        const inside: string[] = [];
+        for (const ref of refs) {
+          if (focusId && ref.seat.sectionId !== focusId) continue;
+          inside.push(ref.seat.id);
+        }
         if (sg2.additive) {
-          const merged = new Set(selectedSeatIds);
+          const merged = new Set(selIdsRef.current);
           for (const id of inside) {
             if (merged.has(id)) merged.delete(id);
             else merged.add(id);
@@ -422,7 +816,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       setSeatMarquee(null);
       return;
     }
-    if (pan.current) { pan.current = null; return; }
+    if (pan.current) { flushVb(); pan.current = null; return; }
     if (ghost) {
       const { a, b } = ghost;
       const w = Math.abs(b[0] - a[0]);
@@ -430,11 +824,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       if ((ghost.kind === 'rect' && w > 10 && h > 10) || (ghost.kind === 'circle' && Math.hypot(w, h) > 10)) {
         const x = Math.min(a[0], b[0]);
         const y = Math.min(a[1], b[1]);
-        const r = Math.hypot(w, h) / 2;
+        const rr = Math.hypot(w, h) / 2;
         const cx = (a[0] + b[0]) / 2;
         const cy = (a[1] + b[1]) / 2;
         const d = ghost.kind === 'circle'
-          ? `M ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy} Z`
+          ? `M ${cx - rr} ${cy} A ${rr} ${rr} 0 1 0 ${cx + rr} ${cy} A ${rr} ${rr} 0 1 0 ${cx - rr} ${cy} Z`
           : `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`;
         const obj: VenueObject = {
           id: uid('obj'), kind: 'vector', shape: ghost.kind === 'circle' ? 'circle' : 'rect',
@@ -469,9 +863,32 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       setGhost(null);
       return;
     }
-    if (drag && previewObj) {
-      const done = previewObj;
-      update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === done.id ? done : o)) }));
+    // Commit drag memakai posisi AKHIR pointerup (bukan preview satu frame tertinggal).
+    // Tepat satu commit/undo untuk seluruh baris yang digeser.
+    // Bila gesture dibatalkan (Esc/cancel), pointerup berikutnya NOL commit.
+    if (dragCancelledRef.current) {
+      dragCancelledRef.current = false;
+      dragPointerRef.current = null;
+      setDrag(null);
+      setScaleDrag(null);
+      setRotateDrag(null);
+      setPreviewObj(null);
+      return;
+    }
+    if (drag) {
+      const r = svgRef.current?.getBoundingClientRect();
+      const vbNow = flushVb();
+      const end = r ? toWorld(e.clientX, e.clientY, r, vbNow) : toSvgCb(e.clientX, e.clientY);
+      if (end && drag.vertex === -1) {
+        const moved = Math.hypot(end[0] - drag.start[0], end[1] - drag.start[1]);
+        if (moved >= 0.5) {
+          const done = finalTranslateForDrag(drag.orig, drag.start, end);
+          update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === done.id ? done : o)) }));
+        }
+      } else if (drag && previewObj && drag.vertex >= 0) {
+        const done = previewObj;
+        update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === done.id ? done : o)) }));
+      }
     }
     if (scaleDrag && previewObj) {
       const done = previewObj;
@@ -484,22 +901,36 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       update((d) => ({ ...d, objects: d.objects.map((o) => (o.id === done.id ? done : o)) }));
       if (done.kind === 'vector') setVecBox(null);
     }
+    dragCancelledRef.current = false;
+    dragPointerRef.current = null;
     setDrag(null);
     setScaleDrag(null);
     setRotateDrag(null);
     setPreviewObj(null);
   };
 
-  const ghostSeats = ghosts ?? [];
+  const ghostSeats = ghosts ?? EMPTY_GHOSTS;
 
   const rendered = previewObj
     ? doc.objects.map((o) => (o.id === previewObj.id ? previewObj : o))
     : doc.objects;
+  // Objek dalam fokus via indeks (tanpa pindai seats per objek per render).
+  const focusObjIds = useMemo(() => {
+    if (!focusId) return null;
+    const set = new Set<string>([focusId]);
+    for (const o of rendered) {
+      if (o.id === focusId || o.sectionId === focusId) set.add(o.id);
+    }
+    const refs = index.seatsBySection.get(focusId);
+    if (refs) for (const r of refs) set.add(r.objId);
+    return set;
+  }, [rendered, focusId, index]);
   // Mode venue: JANGAN render kelompok baris/kursi sama sekali (bukan CSS hide).
   // Hanya section + objek venue relevan. Kursi section aktif dirender setelah masuk.
-  const visible = focusId
-    ? rendered.filter(o => o.id === focusId || o.sectionId === focusId || o.seats.some(s => s.sectionId === focusId))
-    : rendered.filter(o => o.kind !== 'row-straight' && o.kind !== 'row-arc');
+  const visible = useMemo(() => focusId
+    ? rendered.filter(o => focusObjIds!.has(o.id))
+    : rendered.filter(o => o.kind !== 'row-straight' && o.kind !== 'row-arc'),
+  [rendered, focusId, focusObjIds]);
   // Pusat rotasi vector (flatten + vTransform, tanpa rotasi) — pusat yang sama
   // dipakai sectionGeomFor agar tampilan = uji containment. Memo per objek
   // agar pan/zoom tak mem-flatten ulang.
@@ -522,20 +953,230 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
   const grid = useMemo(() => getGridLevels(vb.w), [vb.w]);
   const gridMinorOp = minorOpacity(grid.minorAlpha);
 
+  // ---- Seat layer: builder kanvas (pooling, tanpa alokasi per frame) ----
+  const seatInteractive = !!focusId && tool === 'seat';
+
+  // Ghost besar (>500) harus punya renderer Canvas walau existing <=1500.
+  const ghostLarge = ghostOwner(tool, anchor, ghostSeats.length) === 'canvas';
+  const mountCanvas = !!focusId && (seatsAsCanvas || !!ghostLarge);
+  // Kepemilikan base eksplisit: hanya Canvas bila existing >1500.
+  // Ghost-only (base SVG) -> builder base Canvas HARUS kosong agar seat tidak
+  // digambar dua kali (Canvas + SVG). Mode base masuk ke kunci cache agar
+  // transisi SVG<->Canvas menginvalidasi citra lama.
+  const baseOnCanvasFlag = seatsAsCanvas;
+  // Revisi base: doc + preview drag (preview mengikuti posisi sementara).
+  // Revisi overlay: seleksi + ghost + baris terpilih (tanpa rebuild base).
+  const docRev = baseRevRef.current;
+  const previewKey = previewObj
+    ? `${previewObj.id}|${previewObj.seats.length}|${previewObj.seats[0]?.x ?? 0},${previewObj.seats[0]?.y ?? 0}|${previewObj.points[0]?.[0] ?? 0},${previewObj.points[0]?.[1] ?? 0}`
+    : null;
+  const baseRev = useMemo(
+    () => ({ docRev, previewKey, baseMode: baseOnCanvasFlag ? 'canvas' : 'svg-empty' }),
+    [docRev, previewKey, baseOnCanvasFlag],
+  );
+  // Identitas visual ghost: hash koordinat + validitas (bukan sekadar jumlah),
+  // agar geser dengan jumlah tetap tetap memicu redraw overlay tanpa rebuild base.
+  const ghostHash = ghostVisualHash(ghostSeats);
+  const overlayRev = useMemo(
+    () => ({ sel: selectedSeatIds, ghostN: ghostSeats.length, ghostHash, ax: anchor?.[0] ?? null, ay: anchor?.[1] ?? null, selId: selectedId }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedSeatIds, ghostSeats.length, ghostHash, anchor, selectedId],
+  );
+
+  const buildSeatBase = useCallback((out: SeatDrawSpec[]) => {
+    out.length = 0;
+    // Kepemilikan eksplisit: Canvas hanya menggambar base bila existing >1500.
+    // Ghost-only (base tetap SVG) -> kosong agar tak digambar dua kali.
+    if (!focusId || !mountCanvas || !baseOnCanvasFlag) return;
+    const v = vbRef.current;
+    const m = cullMargin(v, seatRadius);
+    const refs = baseRefs.current;
+    refs.length = 0;
+    // Culling sadar radius besar: pusat boleh di luar viewport selama bentuk terlihat.
+    queryBoxVisible(index, v.x - m, v.y - m, v.x + v.w + m, v.y + v.h + m, refs);
+    // Preview drag baris: ganti koordinat lama dengan posisi sementara agar
+    // Canvas mengikuti pointer, bukan koordinat dokumen lama.
+    const previewMap = previewObj && previewObj.seats.length > 0
+      ? new Map(previewObj.seats.map((s) => [s.id, s]))
+      : null;
+    // Membership O(1) untuk cegah duplikasi preview-dari-luar (ganti refs.some per seat).
+    let refIds: Set<string> | null = null;
+    if (previewMap && previewObj && (previewObj.kind === 'row-straight' || previewObj.kind === 'row-arc')) {
+      refIds = new Set<string>();
+      for (let i = 0; i < refs.length; i++) refIds.add(refs[i].seat.id);
+    }
+    const pool = specPool.current;
+    let n = 0;
+    for (let i = 0; i < refs.length; i++) {
+      const s0 = refs[i].seat;
+      if (s0.sectionId !== focusId) continue;
+      const s = previewMap?.get(s0.id) ?? s0;
+      let sp = pool[n];
+      if (!sp) {
+        sp = { x: 0, y: 0, r: 8, fill: '', alpha: 1, dimmed: false };
+        pool[n] = sp;
+      }
+      sp.x = s.x;
+      sp.y = s.y;
+      sp.r = s.radius ?? seatRadius;
+      sp.fill = s.invalid ? '#dc2626' : (index.sectionColor.get(s.sectionId ?? '') ?? '#94a3b3');
+      sp.alpha = 0.9;
+      sp.dimmed = !s.invalid && (s.status === 'taken' || s.status === 'book');
+      out.push(sp);
+      n++;
+    }
+    // Seat preview yang masuk viewport tetapi basisnya di luar (geser jauh).
+    // Traversal linear: tiap daftar (refs, previewSeats) diproses sekali; Set O(1).
+    if (previewMap && previewObj && refIds && (previewObj.kind === 'row-straight' || previewObj.kind === 'row-arc')) {
+      for (const s of previewObj.seats) {
+        if (s.sectionId !== focusId) continue;
+        if (s.x < v.x - m || s.x > v.x + v.w + m || s.y < v.y - m || s.y > v.y + v.h + m) continue;
+        if (refIds.has(s.id)) continue;
+        let sp = pool[n];
+        if (!sp) {
+          sp = { x: 0, y: 0, r: 8, fill: '', alpha: 1, dimmed: false };
+          pool[n] = sp;
+        }
+        sp.x = s.x;
+        sp.y = s.y;
+        sp.r = s.radius ?? seatRadius;
+        sp.fill = s.invalid ? '#dc2626' : (index.sectionColor.get(s.sectionId ?? '') ?? '#94a3b3');
+        sp.alpha = 0.9;
+        sp.dimmed = !s.invalid && (s.status === 'taken' || s.status === 'book');
+        out.push(sp);
+        n++;
+      }
+    }
+  }, [index, focusId, mountCanvas, baseOnCanvasFlag, seatRadius, previewObj]);
+
+  const buildSeatOverlay = useCallback((out: OverlaySpec[]) => {
+    out.length = 0;
+    if (!focusId || !mountCanvas) return;
+    // Ghost-only Canvas (base SVG): overlay Canvas HANYA ghost agar seleksi/
+    // hover tak digambar dua kali (SVG tetap menggambarnya).
+    const selectionOnCanvas = baseOnCanvasFlag;
+    if (selectionOnCanvas) {
+    // Peta preview sekali (bukan find per seat terpilih): O(sel + preview).
+    const previewById = previewObj && previewObj.seats.length > 0
+      ? new Map(previewObj.seats.map((s) => [s.id, s]))
+      : null;
+    for (const id of selIdsRef.current) {
+      const entry = index.seatById.get(id);
+      if (!entry || entry.seat.sectionId !== focusId) continue;
+      // Selama drag baris, posisi overlay mengikuti preview sementara.
+      const pv = previewById?.get(id);
+      const x = pv?.x ?? entry.seat.x;
+      const y = pv?.y ?? entry.seat.y;
+      out.push({ x, y, r: entry.seat.radius ?? seatRadius, kind: 'selected' });
+    }
+    // Baris terpilih via tool Select (tanpa seat selection): tandai seluruh baris.
+    if (selectedId) {
+      const selObj = index.objectById.get(selectedId);
+      if (selObj && (selObj.kind === 'row-straight' || selObj.kind === 'row-arc')) {
+        const src = previewObj?.id === selObj.id ? previewObj : selObj;
+        for (const s of src.seats) {
+          if (s.sectionId !== focusId) continue;
+          out.push({ x: s.x, y: s.y, r: (s.radius ?? seatRadius) * 1.25, kind: 'selected' });
+        }
+      }
+    }
+    const hov = hoverSeatRef.current;
+    if (hov && hov.seat.sectionId === focusId) {
+      out.push({ x: hov.seat.x, y: hov.seat.y, r: hov.seat.radius ?? seatRadius, kind: 'hover' });
+    }
+    const foc = focusSeatRef.current;
+    if (foc && foc.seat.id !== hov?.seat.id && foc.seat.sectionId === focusId) {
+      out.push({ x: foc.seat.x, y: foc.seat.y, r: foc.seat.radius ?? seatRadius, kind: 'hover' });
+    }
+    }
+    // Ghost preview baris besar: selalu di overlay Canvas (bukan ribuan node SVG),
+    // terlepas dari jumlah existing seat.
+    if ((tool === 'row' || tool === 'multirow') && anchor && ghostSeats.length > 500) {
+      for (const g of ghostSeats) {
+        out.push({ x: g.x, y: g.y, r: seatRadius, kind: g.ok ? 'ghost-ok' : 'ghost-bad' });
+      }
+    }
+  }, [index, focusId, mountCanvas, baseOnCanvasFlag, seatRadius, tool, anchor, ghostSeats, selectedId, previewObj]);
+
+  // Delegasi event kursi SVG-mode: satu handler stabil per kelompok (tanpa closure per seat).
+  const rowSeatDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0 || e.altKey) return;
+    const t = (e.target as Element).closest?.('[data-seat-id]');
+    const id = t?.getAttribute('data-seat-id');
+    if (!id) return;
+    e.stopPropagation();
+    activateSeat(id, e.shiftKey || e.metaKey || e.ctrlKey);
+  }, [activateSeat]);
+  const rowSeatOver = useCallback((e: React.PointerEvent) => {
+    const t = (e.target as Element).closest?.('[data-seat-id]');
+    const id = t?.getAttribute('data-seat-id');
+    setHoverSeatId((prev) => (prev === (id ?? null) ? prev : (id ?? null)));
+  }, []);
+  const rowSeatOut = useCallback(() => setHoverSeatId(null), []);
+
+  // Navigasi keyboard kursi (kanvas-mode): panah pindah fokus, Enter/Space toggle.
+  const moveSeatFocus = useCallback((dx: number, dy: number) => {
+    if (!focusId) return;
+    const refs = index.seatsBySection.get(focusId);
+    if (!refs || refs.length === 0) return;
+    const cur = focusSeatRef.current?.seat ?? hoverSeatRef.current?.seat ?? null;
+    let best: SeatRef | null = null;
+    let bestScore = Infinity;
+    const cx = cur ? cur.x : refs[0].seat.x;
+    const cy = cur ? cur.y : refs[0].seat.y;
+    for (const ref of refs) {
+      const s = ref.seat;
+      const vx = s.x - cx;
+      const vy = s.y - cy;
+      if (cur && vx === 0 && vy === 0) continue;
+      const dot = vx * dx + vy * dy;
+      if (dot <= 0) continue;
+      const perp = Math.abs(vx * dy - vy * dx);
+      const score = perp * 4 + dot;
+      if (score < bestScore) {
+        bestScore = score;
+        best = ref;
+      }
+    }
+    if (!best && !cur) best = refs[0];
+    if (best) {
+      focusSeatRef.current = best;
+      hoverSeatRef.current = best;
+      if (liveRef.current) liveRef.current.textContent = `Kursi ${best.seat.row}${best.seat.number}`;
+      seatCanvasRef.current?.requestRedraw();
+    }
+  }, [index, focusId]);
+
   return (
     <>
+    <div style={{ position: 'absolute', inset: 0 }}>
     <svg
-      onPointerLeave={() => { setCanvasHoverId(null); setHoverSeatId(null); }}
+      onPointerLeave={() => { setCanvasHoverId(null); setHoverSeatId(null); hoverSeatRef.current = null; seatCanvasRef.current?.requestRedraw(); const tip = tooltipRef.current; if (tip) tip.style.display = 'none'; }}
       ref={svgRef}
       viewBox={viewBoxStr(vb)}
       className={tool === 'hand' ? 'canvas hand-tool' : 'canvas'}
       aria-label={focusId ? 'Editor isi section' : 'Editor venue'}
       tabIndex={0}
       onKeyDown={e => {
-        const steps: Record<string, [number, number]> = { ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,-1], ArrowDown:[0,1] };
+        const steps: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
         const step = steps[e.key];
         if (rowGesture.current) return;
-        if (step) { e.preventDefault(); setVb(v => ({ ...v, x:v.x + step[0]*v.w*0.1, y:v.y + step[1]*v.h*0.1 })); }
+        // Kanvas-mode + tool seat: panah = navigasi kursi (bukan geser kamera).
+        if (seatsAsCanvas && seatInteractive && step) {
+          e.preventDefault();
+          moveSeatFocus(step[0], step[1]);
+          return;
+        }
+        if (seatsAsCanvas && seatInteractive && (e.key === 'Enter' || e.key === ' ')) {
+          const cur = focusSeatRef.current ?? hoverSeatRef.current;
+          if (cur) {
+            e.preventDefault();
+            activateSeat(cur.seat.id, true);
+            if (liveRef.current) liveRef.current.textContent = `Kursi ${cur.seat.row}${cur.seat.number} dipilih`;
+          }
+          return;
+        }
+        if (step) { e.preventDefault(); const v = vbRef.current; applyVbSync({ ...v, x: v.x + step[0] * v.w * 0.1, y: v.y + step[1] * v.h * 0.1 }); }
         if (e.key === '+' || e.key === '=') { e.preventDefault(); zoom(0.8); }
         if (e.key === '-') { e.preventDefault(); zoom(1.25); }
         if (e.key === '0') { e.preventDefault(); fit(); }
@@ -546,8 +1187,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       onPointerDown={onSvgPointerDown}
       onPointerMove={onSvgPointerMove}
       onPointerUp={onSvgPointerUp}
-      onLostPointerCapture={() => { pan.current = null; if (rowGesture.current) { rowGesture.current = null; onCancelRowDrag(); } seatGesture.current = null; setSeatMarquee(null); }}
-      onPointerCancel={() => { rowGesture.current = null; seatGesture.current = null; setSeatMarquee(null); onCancelRowDrag(); pan.current = null; setDrag(null); setScaleDrag(null); setRotateDrag(null); setGhost(null); setPreviewObj(null); }}
+      onLostPointerCapture={() => { flushVb(); pan.current = null; if (rowGesture.current) { rowGesture.current = null; onCancelRowDrag(); } seatGesture.current = null; setSeatMarquee(null); if (drag !== null || scaleDrag !== null || rotateDrag !== null || previewObj !== null) { dragCancelledRef.current = true; dragPointerRef.current = null; setDrag(null); setScaleDrag(null); setRotateDrag(null); setPreviewObj(null); } }}
+      onPointerCancel={() => { rowGesture.current = null; seatGesture.current = null; setSeatMarquee(null); onCancelRowDrag(); flushVb(); pan.current = null; dragCancelledRef.current = true; dragPointerRef.current = null; setDrag(null); setScaleDrag(null); setRotateDrag(null); setGhost(null); setPreviewObj(null); hoverSeatRef.current = null; focusSeatRef.current = null; seatCanvasRef.current?.requestRedraw(); }}
       onDoubleClick={() => {
         if (draft.length >= 3) commitPolygon(draft);
       }}
@@ -595,7 +1236,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
             const svg = svgRef.current;
             if (!svg) return;
             const r = svg.getBoundingClientRect();
-            const p: Pt = toWorld(e.clientX, e.clientY, r, vb);
+            const p: Pt = toWorld(e.clientX, e.clientY, r, vbRef.current);
+            beginObjectDrag(e.pointerId);
             setDrag({ id: o.id, vertex: -1, orig: o, start: p });
           },
         };
@@ -659,7 +1301,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           );
         }
         if (o.kind === 'row-straight' || o.kind === 'row-arc') {
-          const seatInteractive = !!focusId && tool === 'seat';
+          if (seatsAsCanvas) return null;
           return (
             <g key={o.id} {...objectHoverEvents} {...(seatInteractive ? {} : selectDrag)} aria-label={`${o.label} (${o.seats.length} kursi)`}>
               {(() => {
@@ -683,53 +1325,12 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
                   </g>
                 );
               })()}
-              {o.seats.map((s) => {
-                const secId = s.sectionId ?? o.sectionId ?? focusId ?? '';
-                const fill = s.invalid ? '#dc2626' : sectionColor(secId);
-                const dimmed = !s.invalid && (s.status === 'taken' || s.status === 'book');
-                return (
-                <circle key={s.id} cx={s.x} cy={s.y} r={(s.radius ?? 8) * 0.875} fill={fill} opacity={dimmed ? 0.45 : 0.9}
-                  onPointerEnter={() => { if (seatInteractive) setHoverSeatId(s.id); }}
-                  onPointerLeave={() => setHoverSeatId(null)}
-                  style={seatInteractive ? { cursor: 'pointer' } : undefined}
-                  onPointerDown={seatInteractive ? (e) => {
-                    if (e.button !== 0 || e.altKey) return;
-                    e.stopPropagation();
-                    const additive = e.shiftKey || e.metaKey || e.ctrlKey;
-                    if (additive) {
-                      const next = new Set(selectedSeatIds);
-                      if (next.has(s.id)) next.delete(s.id);
-                      else next.add(s.id);
-                      selectSeats([...next]);
-                      seatTap.current = null;
-                    } else {
-                      // Klik tunggal = seluruh barisnya; klik ganda cepat = 1 kursi itu saja.
-                      const now = Date.now();
-                      const last = seatTap.current;
-                      if (last && last.id === s.id && now - last.t < 400) {
-                        seatTap.current = null;
-                        selectSeats([s.id]);
-                      } else {
-                        seatTap.current = { id: s.id, t: now };
-                        selectSeats(o.seats.map((x) => x.id));
-                      }
-                    }
-                    // cegah marquee mulai dari lingkaran kursi
-                    seatGesture.current = null;
-                    setSeatMarquee(null);
-                  } : undefined}>
-                  <title>{`${s.row}${s.number}`}</title>
-                </circle>
-                );
-              })}
-              {seatInteractive && o.seats.some((s) => s.id === hoverSeatId) && o.seats.map((s) => (
-                <circle key={`hover-${s.id}`} data-hover-seat={s.id} cx={s.x} cy={s.y} r={(s.radius ?? 8) * 1.25}
-                  fill="rgba(245,158,11,0.18)" stroke="#f59e0b" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
-              ))}
-              {o.seats.filter((s) => selectedSeatSet.has(s.id)).map((s) => (
-                <circle key={`sel-${s.id}`} cx={s.x} cy={s.y} r={(s.radius ?? 8) * 1.25} fill="none"
-                  stroke="#1d4ed8" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
-              ))}
+              <RowSeatsGroup rowObj={o} color={sectionColor(o.seats[0]?.sectionId ?? o.sectionId ?? focusId ?? '')}
+                interactive={seatInteractive} onSeatDown={rowSeatDown} onSeatOver={rowSeatOver} onSeatOut={rowSeatOut} />
+              {seatInteractive && hoverSeatId != null && (
+                <RowHoverRings index={index} seatId={hoverSeatId} />
+              )}
+              <SeatSelectedRings index={index} ids={selectedSeatIds} focusId={focusId} rowId={o.id} />
             </g>
           );
         }
@@ -773,6 +1374,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           outline = <polyline points={ptsStr(hovered.points)} fill="none" stroke="#f59e0b" strokeWidth={hovered.width + vb.w / 180} strokeLinecap="round" opacity={0.6}
             transform={harc ? `rotate(${harot} ${harc[0]} ${harc[1]})` : undefined} />;
         } else if (hovered.kind.startsWith('row')) {
+          if (seatsAsCanvas) return null;
           outline = hovered.seats.map(seat => <circle key={seat.id} cx={seat.x} cy={seat.y} r={(seat.radius ?? 8) * 1.2} fill="rgba(245,158,11,0.16)" {...style} />);
         } else {
           const hprot = rotationOf(hovered);
@@ -805,7 +1407,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
                   const svg = svgRef.current;
                   if (!svg) return;
                   const r = svg.getBoundingClientRect();
-                  const sp: Pt = toWorld(e.clientX, e.clientY, r, vb);
+                  const sp: Pt = toWorld(e.clientX, e.clientY, r, vbRef.current);
+                  beginObjectDrag(e.pointerId);
                   setDrag({ id: selected.id, vertex: i, orig: selected, start: sp });
                 }}
               />
@@ -855,6 +1458,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
                   if (!selected.vTransform) return;
                   e.stopPropagation();
                   const base = previewObj?.id === selected.id ? previewObj : selected;
+                  beginObjectDrag(e.pointerId);
                   setScaleDrag({ id: selected.id, orig: base, cx, cy, d0: Math.max(Math.hypot(px - cx, py - cy), 4) });
                 }}
               />
@@ -929,8 +1533,9 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
                 const svg = svgRef.current;
                 if (!svg) return;
                 const r = svg.getBoundingClientRect();
-                const sp: Pt = toWorld(e.clientX, e.clientY, r, vb);
+                const sp: Pt = toWorld(e.clientX, e.clientY, r, vbRef.current);
                 const sa = (Math.atan2(sp[1] - cy, sp[0] - cx) * 180) / Math.PI;
+                beginObjectDrag(e.pointerId);
                 setRotateDrag({ id: selected.id, orig: target, cx, cy, startAngle: sa, delta: 0 });
               }}
             >
@@ -973,7 +1578,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         fill="rgba(29,78,216,0.08)" stroke="#1d4ed8" strokeWidth={1.5} vectorEffect="non-scaling-stroke"
         strokeDasharray="6 4" pointerEvents="none" />}
 
-      {(tool === 'row' || tool === 'multirow') && anchor && ghosts && focusId && (
+      {(tool === 'row' || tool === 'multirow') && anchor && ghosts && focusId && ghostSeats.length <= 500 && (
         <g>
           <circle cx={anchor[0]} cy={anchor[1]} r={seatRadius * 1.125} fill="none" stroke="#16a34a" strokeWidth={2.5} />
           {ghostSeats.map((s, i) => (
@@ -984,12 +1589,68 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           </text>
         </g>
       )}
+      {(tool === 'row' || tool === 'multirow') && anchor && ghosts && focusId && ghostSeats.length > 500 && (
+        <g>
+          <circle cx={anchor[0]} cy={anchor[1]} r={seatRadius * 1.125} fill="none" stroke="#16a34a" strokeWidth={2.5} />
+          <text x={anchor[0] + 14} y={anchor[1] - 10} className="lbl">
+            jangkar baris ({ghostSeats.filter((s) => s.ok).length} valid · {ghostSeats.filter((s) => !s.ok).length} ditolak)
+          </text>
+        </g>
+      )}
     </svg>
+    {mountCanvas && (
+      <SeatCanvas ref={seatCanvasRef} vb={vb} baseRev={baseRev}
+        overlayRev={overlayRev}
+        buildBase={buildSeatBase} buildOverlay={buildSeatOverlay}
+        simpleDots={lod.level === 'dot'} label="editor" />
+    )}
+    <div ref={tooltipRef} role="status" aria-live="polite"
+      style={{ display: 'none', position: 'absolute', left: 0, top: 0, pointerEvents: 'none', background: '#0f172a', color: '#fff', fontSize: 12, padding: '2px 8px', borderRadius: 6, zIndex: 5 }} />
+    <div ref={liveRef} aria-live="polite" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }} />
+    </div>
     <div className="editor-camera" role="toolbar" aria-label="Navigasi kanvas">
       <button aria-label="Perbesar kanvas" title="Perbesar" onClick={() => zoom(0.8)}><Plus size={18} aria-hidden="true" /></button>
       <button aria-label="Perkecil kanvas" title="Perkecil" onClick={() => zoom(1.25)}><Minus size={18} aria-hidden="true" /></button>
-      <button aria-label="Pas di layar" title="Pas di layar" onClick={fit}><Maximize size={18} aria-hidden="true" /></button>
+      <button aria-label="Pas di layar" title="Pas di layar" onClick={() => fit()}><Maximize size={18} aria-hidden="true" /></button>
     </div>
     </>
   );
+}
+
+/**
+ * Overlay hover sebaris (SVG-mode, perilaku lama): seluruh kursi dalam baris
+ * yang sama dengan kursi hover mendapat cincin amber. Hanya dirender untuk
+ * baris yang sedang di-hover (bukan seluruh scene).
+ */
+function RowHoverRings({ index, seatId }: { index: ReturnType<typeof getDocIndex>; seatId: string }) {
+  const entry = index.seatById.get(seatId);
+  if (!entry) return null;
+  const rowObj = index.objectById.get(entry.objId);
+  if (!rowObj) return null;
+  return (
+    <g pointerEvents="none" aria-hidden="true">
+      {rowObj.seats.map((s) => (
+        <circle key={`hover-${s.id}`} cx={s.x} cy={s.y} r={(s.radius ?? 8) * 1.25}
+          fill="rgba(245,158,11,0.18)" stroke="#f59e0b" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+      ))}
+    </g>
+  );
+}
+
+/** Cincin seleksi (SVG-mode): hanya kursi terpilih dalam baris ini yang dirender. */
+function SeatSelectedRings({ index, ids, focusId, rowId }: { index: ReturnType<typeof getDocIndex>; ids: string[]; focusId: string | null; rowId: string }) {
+  if (ids.length === 0) return null;
+  const rings: React.ReactNode[] = [];
+  for (const id of ids) {
+    const entry = index.seatById.get(id);
+    if (!entry || entry.objId !== rowId) continue;
+    if (focusId && entry.seat.sectionId !== focusId) continue;
+    const s = entry.seat;
+    rings.push(
+      <circle key={`sel-${id}`} cx={s.x} cy={s.y} r={(s.radius ?? 8) * 1.25} fill="none"
+        stroke="#1d4ed8" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />,
+    );
+  }
+  if (rings.length === 0) return null;
+  return <g pointerEvents="none" aria-hidden="true">{rings}</g>;
 }

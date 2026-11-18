@@ -1,0 +1,7 @@
+{
+  "tag": "50k-rect.editor.dpr1.1440x900.run1",
+  "probe": {
+    "error": "fixture tak tersedia di konteks (0 < 100000)"
+  },
+  "note": "idle 3s vs pan kontinu 6s, metode rAF sama; vbChanged membuktikan kamera bergerak"
+}

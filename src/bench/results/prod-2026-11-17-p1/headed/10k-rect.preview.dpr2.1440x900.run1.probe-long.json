@@ -1,0 +1,7 @@
+{
+  "tag": "10k-rect.preview.dpr2.1440x900.run1",
+  "probe": {
+    "error": "tak ada shape section"
+  },
+  "note": "idle 3s vs pan kontinu 6s, metode rAF sama; vbChanged membuktikan kamera bergerak"
+}

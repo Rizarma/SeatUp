@@ -1,0 +1,163 @@
+{
+  "rev": "prod-c3b1db5-dirty-7a6403784a92",
+  "base": "http://localhost:4173/",
+  "finishedAt": "2026-11-17T15:13:13.451Z",
+  "runs": [
+    {
+      "tag": "1k-rect.editor.dpr1.1440x900.run1",
+      "status": "done",
+      "wallMs": 12779,
+      "perf": "pass"
+    },
+    {
+      "tag": "1k-rect.editor.dpr1.1440x900.run2",
+      "status": "done",
+      "wallMs": 10133,
+      "perf": "pass"
+    },
+    {
+      "tag": "10k-rect.editor.dpr1.1440x900.run1",
+      "status": "done",
+      "wallMs": 10290,
+      "perf": "pass"
+    },
+    {
+      "tag": "10k-rect.editor.dpr1.1440x900.run2",
+      "status": "done",
+      "wallMs": 10309,
+      "perf": "pass"
+    },
+    {
+      "tag": "10k-complex.editor.dpr1.1440x900.run1",
+      "status": "done",
+      "wallMs": 10313,
+      "perf": "pass"
+    },
+    {
+      "tag": "10k-complex.editor.dpr1.1440x900.run2",
+      "status": "done",
+      "wallMs": 10311,
+      "perf": "pass"
+    },
+    {
+      "tag": "20k-rect.editor.dpr1.1440x900.run1",
+      "status": "done",
+      "wallMs": 10317,
+      "perf": "pass"
+    },
+    {
+      "tag": "20k-rect.editor.dpr1.1440x900.run2",
+      "status": "done",
+      "wallMs": 10311,
+      "perf": "pass"
+    },
+    {
+      "tag": "20k-elongated.editor.dpr1.1440x900.run1",
+      "status": "done",
+      "wallMs": 10342,
+      "perf": "pass"
+    },
+    {
+      "tag": "20k-elongated.editor.dpr1.1440x900.run2",
+      "status": "done",
+      "wallMs": 10342,
+      "perf": "pass"
+    },
+    {
+      "tag": "20k-12kblock.editor.dpr1.1440x900.run1",
+      "status": "done",
+      "wallMs": 10656,
+      "perf": "pass"
+    },
+    {
+      "tag": "20k-12kblock.editor.dpr1.1440x900.run2",
+      "status": "done",
+      "wallMs": 10655,
+      "perf": "pass"
+    },
+    {
+      "tag": "50k-rect.editor.dpr1.1440x900.run1",
+      "status": "done",
+      "wallMs": 10491,
+      "perf": "stress"
+    },
+    {
+      "tag": "50k-rect.editor.dpr1.1440x900.run2",
+      "status": "done",
+      "wallMs": 10480,
+      "perf": "stress"
+    },
+    {
+      "tag": "10k-rect.editor.dpr2.1440x900.run1",
+      "status": "done",
+      "wallMs": 10278,
+      "perf": "pass"
+    },
+    {
+      "tag": "10k-rect.editor.dpr2.1440x900.run2",
+      "status": "done",
+      "wallMs": 10291,
+      "perf": "pass"
+    },
+    {
+      "tag": "20k-rect.editor.dpr2.1440x900.run1",
+      "status": "done",
+      "wallMs": 10308,
+      "perf": "pass"
+    },
+    {
+      "tag": "20k-rect.editor.dpr2.1440x900.run2",
+      "status": "done",
+      "wallMs": 10308,
+      "perf": "pass"
+    },
+    {
+      "tag": "10k-rect.editor.dpr2.390x844.run1",
+      "status": "done",
+      "wallMs": 10801,
+      "perf": "pass"
+    },
+    {
+      "tag": "10k-rect.editor.dpr2.390x844.run2",
+      "status": "done",
+      "wallMs": 10309,
+      "perf": "pass"
+    },
+    {
+      "tag": "10k-rect.preview.dpr1.1440x900.run1",
+      "status": "done",
+      "wallMs": 5043,
+      "perf": "pass"
+    },
+    {
+      "tag": "10k-rect.preview.dpr1.1440x900.run2",
+      "status": "done",
+      "wallMs": 5067,
+      "perf": "pass"
+    },
+    {
+      "tag": "20k-rect.preview.dpr1.1440x900.run1",
+      "status": "done",
+      "wallMs": 5040,
+      "perf": "pass"
+    },
+    {
+      "tag": "20k-rect.preview.dpr1.1440x900.run2",
+      "status": "done",
+      "wallMs": 5039,
+      "perf": "pass"
+    },
+    {
+      "tag": "10k-rect.preview.dpr2.1440x900.run1",
+      "status": "done",
+      "wallMs": 5027,
+      "perf": "pass"
+    },
+    {
+      "tag": "10k-rect.preview.dpr2.1440x900.run2",
+      "status": "done",
+      "wallMs": 5025,
+      "perf": "pass"
+    }
+  ]
+}

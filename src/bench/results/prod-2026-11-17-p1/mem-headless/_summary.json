@@ -1,0 +1,24 @@
+{
+  "rev": "prod-c3b1db5-dirty-be20a7c9f440",
+  "base": "http://localhost:4173/",
+  "finishedAt": "2026-11-17T15:14:27.591Z",
+  "runs": [
+    {
+      "tag": "10k-rect.editor.dpr1.1440x900.run1.memfull",
+      "status": "bench_error",
+      "wallMs": 25119
+    },
+    {
+      "tag": "20k-rect.editor.dpr1.1440x900.run1.memfull",
+      "status": "done",
+      "wallMs": 22909,
+      "perf": "pass"
+    },
+    {
+      "tag": "50k-rect.editor.dpr1.1440x900.run1.memfull",
+      "status": "done",
+      "wallMs": 23033,
+      "perf": "stress"
+    }
+  ]
+}

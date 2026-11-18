@@ -1,16 +1,37 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SeatStatus } from '../lib/venue';
 import { useStore } from '../store';
-import { fitViewBox, viewBoxStr } from '../lib/camera';
+import { fitViewBox, toWorld, viewBoxStr } from '../lib/camera';
 import type { ViewBox } from '../lib/camera';
 import { sectionGeomFor, shapeCenter, vectorCanvasCenter } from '../lib/contain';
 import { categoryColorForSection, categoryById } from '../lib/categories';
 import { bboxOf, rotationOf, toPointsString } from '../lib/geometry';
+import { getDocIndex, queryBoxVisible, queryPoint, type SeatRef } from '../lib/docIndex';
+import { cullMargin, lodFor, resizePreserveScale } from '../lib/viewTransform';
+import SeatCanvas, { type SeatCanvasHandle } from './SeatCanvas';
+import type { OverlaySpec, SeatDrawSpec } from '../lib/seatCanvas';
+import { CANVAS_SEAT_THRESHOLD } from './EditorCanvas';
 import { Plus, Minus, Maximize, ChevronDown, X, ArrowLeft } from 'lucide-react';
 
 const ORPHAN_ID = '__orphan__';
 const ORPHAN_COLOR = '#94a3b3';
 const money = (value: number) => `Rp${value.toLocaleString('id-ID')}`;
+
+interface EnrichedSeat {
+  id: string;
+  row: string;
+  number: string;
+  x: number;
+  y: number;
+  radius?: number;
+  status: SeatStatus;
+  price: number;
+  invalid?: boolean;
+  section: string;
+  sectionId: string;
+  color: string;
+  categoryName: string;
+}
 
 export default function Preview() {
   const { state } = useStore();
@@ -20,68 +41,182 @@ export default function Preview() {
   const [legendOpen, setLegendOpen] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const drag = useRef<{ x: number; y: number; vb: ViewBox; moved: boolean } | null>(null);
+  const drag = useRef<{ x: number; y: number; vb: ViewBox; moved: boolean; rectW: number; rectH: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [vb, setVb] = useState<ViewBox>({ x: 0, y: 0, w: doc.width, h: doc.height });
+  const vbRef = useRef(vb);
+  vbRef.current = vb;
+  const pendingVb = useRef<ViewBox | null>(null);
+  const camRaf = useRef(0);
   const savedVenueView = useRef<ViewBox | null>(null);
 
+  const applyVbSync = useCallback((next: ViewBox) => {
+    pendingVb.current = null;
+    if (camRaf.current !== 0 && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(camRaf.current);
+      camRaf.current = 0;
+    }
+    vbRef.current = next;
+    setVb(next);
+  }, []);
+  /** Pan/zoom pointer: maksimal 1 setVb per frame, tanpa antrean callback. */
+  const scheduleVb = useCallback((next: ViewBox) => {
+    pendingVb.current = next;
+    if (camRaf.current !== 0) return;
+    if (typeof requestAnimationFrame !== 'function') {
+      pendingVb.current = null;
+      vbRef.current = next;
+      setVb(next);
+      return;
+    }
+    camRaf.current = requestAnimationFrame(() => {
+      camRaf.current = 0;
+      const p = pendingVb.current;
+      pendingVb.current = null;
+      if (p) {
+        vbRef.current = p;
+        setVb(p);
+      }
+    });
+  }, []);
+  useEffect(() => () => {
+    if (camRaf.current !== 0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(camRaf.current);
+    if (hoverRaf.current !== 0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(hoverRaf.current);
+  }, []);
+
+  // Indeks turunan doc: O(1) bila doc tak berubah (kamera/picks tak membangun ulang).
+  const index = getDocIndex(doc);
   const sections = useMemo(() => doc.objects.filter((o) => o.isSection), [doc.objects]);
   const colorOf = (sectionId: string): string => {
     if (!sections.some((o) => o.id === sectionId)) return ORPHAN_COLOR;
     return categoryColorForSection(doc.objects, doc.categories, sectionId);
   };
 
-  const seats = useMemo(() => doc.objects.flatMap((o) =>
-    o.seats.map((s) => {
-      const section = doc.objects.find((item) => item.id === (s.sectionId ?? o.sectionId)) ?? o;
-      const isSec = !!section.isSection;
-      return {
-        ...s,
-        section: isSec ? section.label : 'Tanpa section',
-        sectionId: isSec ? section.id : ORPHAN_ID,
-        color: isSec ? categoryColorForSection(doc.objects, doc.categories, section.id) : ORPHAN_COLOR,
-        categoryName: isSec ? (section.categoryId ? categoryById(doc, section.categoryId)?.name ?? section.label : section.label) : 'Tanpa section',
-      };
-    })), [doc]);
+  // Daftar seat diperkaya: O(seats) dengan lookup map (tanpa find per seat).
+  const seats = useMemo<EnrichedSeat[]>(() => {
+    const out: EnrichedSeat[] = [];
+    for (const o of doc.objects) {
+      if (o.seats.length === 0) continue;
+      for (const s of o.seats) {
+        const owner = (s.sectionId ? index.objectById.get(s.sectionId) : undefined) ?? o;
+        const isSec = !!owner.isSection;
+        const secId = isSec ? owner.id : ORPHAN_ID;
+        out.push({
+          ...s,
+          section: isSec ? owner.label : 'Tanpa section',
+          sectionId: secId,
+          color: isSec ? index.sectionColor.get(owner.id) ?? ORPHAN_COLOR : ORPHAN_COLOR,
+          categoryName: isSec ? (owner.categoryId ? categoryById(doc, owner.categoryId)?.name ?? owner.label : owner.label) : 'Tanpa section',
+        });
+      }
+    }
+    return out;
+  }, [doc, index]);
 
   const orphanSeats = useMemo(() => seats.filter((s) => s.sectionId === ORPHAN_ID), [seats]);
   const activeSection = activeId && activeId !== ORPHAN_ID ? sections.find((o) => o.id === activeId) ?? null : null;
   const activeLabel = activeId === ORPHAN_ID ? 'Tanpa section' : activeSection?.label ?? null;
-  const visibleSeats = activeId ? seats.filter((s) => s.sectionId === activeId) : [];
+  const visibleSeats = useMemo(() => activeId ? seats.filter((s) => s.sectionId === activeId) : [], [seats, activeId]);
+  const seatsAsCanvas = visibleSeats.length > CANVAS_SEAT_THRESHOLD;
+  const seatMap = useMemo(() => new Map(visibleSeats.map((s) => [s.id, s])), [visibleSeats]);
 
-  const fitTo = (box: { x: number; y: number; w: number; h: number } | null) => {
+  const hoverSeatRef = useRef<EnrichedSeat | null>(null);
+  const focusSeatRef = useRef<EnrichedSeat | null>(null);
+  // Revisi lapisan dasar kanvas: naik tiap doc/sim berubah.
+  const prevBaseRef = useRef<{ doc: typeof doc; sim: Map<string, SeatStatus> } | null>(null);
+  const baseRevRef = useRef(0);
+  const prevBase = prevBaseRef.current;
+  if (!prevBase || prevBase.doc !== doc || prevBase.sim !== sim) {
+    prevBaseRef.current = { doc, sim };
+    baseRevRef.current += 1;
+    hoverSeatRef.current = null;
+    focusSeatRef.current = null;
+  }
+
+  const hoverRaf = useRef(0);
+  const hoverPending = useRef<{ x: number; y: number } | null>(null);
+  const seatCanvasRef = useRef<SeatCanvasHandle>(null);
+  const canvasTipRef = useRef<HTMLDivElement>(null);
+  const liveRef = useRef<HTMLDivElement>(null);
+  const baseRefs = useRef<SeatRef[]>([]);
+  const specPool = useRef<SeatDrawSpec[]>([]);
+  // Ukuran CSS untuk LOD + preserve-scale resize (diperbarui saat resize).
+  const [cssW, setCssW] = useState(1000);
+  const [, setCssH] = useState(700);
+  const cssRef = useRef({ w: 1000, h: 700 });
+  const lod = lodFor(vb, cssW, 8);
+
+  const picksRef = useRef(picks);
+  picksRef.current = picks;
+  const simRef = useRef(sim);
+  simRef.current = sim;
+  // Kait bench (?bench): paparkan picks + subtotal untuk verifikasi identitas preview.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('bench')) {
+      (window as unknown as { __seatupBenchPicks?: string[] }).__seatupBenchPicks = [...picks];
+      const tot = [...picks].reduce((a, id) => a + (seatMap.get(id)?.price ?? 0), 0);
+      (window as unknown as { __seatupBenchSubtotal?: number }).__seatupBenchSubtotal = tot;
+    }
+  }, [picks, seatMap]);
+
+  const eff = useCallback((id: string, base: SeatStatus): SeatStatus => {
+    if (picksRef.current.has(id)) return 'pick';
+    return simRef.current.get(id) ?? base;
+  }, []);
+
+  const toggle = useCallback((id: string, base: SeatStatus, invalid: boolean) => {
+    if (invalid || drag.current?.moved) return;
+    setConfirmed(false);
+    const cur = picksRef.current.has(id) ? 'pick' : simRef.current.get(id) ?? base;
+    if (cur === 'available' || cur === 'pick') {
+      setPicks((prev) => {
+        const n = new Set(prev);
+        if (n.has(id)) n.delete(id);
+        else n.add(id);
+        return n;
+      });
+    }
+  }, []);
+
+  const fitTo = useCallback((box: { x: number; y: number; w: number; h: number } | null) => {
     const rect = svgRef.current?.getBoundingClientRect();
     const cw = rect && rect.width > 0 ? rect.width : 1000;
     const ch = rect && rect.height > 0 ? rect.height : 700;
+    cssRef.current = { w: cw, h: ch };
+    setCssW(cw);
+    setCssH(ch);
     if (!box) {
-      setVb(fitViewBox(cw, ch, doc.width, doc.height));
+      applyVbSync(fitViewBox(cw, ch, doc.width, doc.height));
       return;
     }
     const cx = box.x + box.w / 2;
     const cy = box.y + box.h / 2;
-    setVb(fitViewBox(cw, ch, Math.max(1, box.w * 1.35), Math.max(1, box.h * 1.35), cx, cy));
-  };
+    applyVbSync(fitViewBox(cw, ch, Math.max(1, box.w * 1.35), Math.max(1, box.h * 1.35), cx, cy));
+  }, [doc.width, doc.height, applyVbSync]);
 
-  const geomBox = (sectionId: string): { x: number; y: number; w: number; h: number } | null => {
-    const obj = doc.objects.find((o) => o.id === sectionId);
+  const geomBox = useCallback((sectionId: string): { x: number; y: number; w: number; h: number } | null => {
+    const obj = index.objectById.get(sectionId);
     if (!obj) return null;
     const geom = sectionGeomFor(obj);
     if (!geom) return null;
     const box = bboxOf(geom.rings.flat());
     if (!box) return null;
     return { x: box.x, y: box.y, w: box.w, h: box.h };
-  };
+  }, [index]);
 
-  const enter = (id: string) => {
-    if (!activeId) savedVenueView.current = vb;
+  const enter = useCallback((id: string) => {
+    if (!activeId) savedVenueView.current = vbRef.current;
     setActiveId(id);
     setConfirmed(false);
-    fitTo(geomBox(id));
-  };
+  }, [activeId]);
+  useEffect(() => {
+    if (activeId) fitTo(geomBox(activeId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
   const leave = () => {
     setActiveId(null);
     setConfirmed(false);
-    if (savedVenueView.current) setVb(savedVenueView.current);
+    if (savedVenueView.current) applyVbSync(savedVenueView.current);
     else fitTo(null);
   };
 
@@ -106,43 +241,177 @@ export default function Preview() {
     const el = svgRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
-      if (!activeId) {
-        const r = el.getBoundingClientRect();
-        setVb(fitViewBox(r.width, r.height, doc.width, doc.height));
-      }
+      const r = el.getBoundingClientRect();
+      const nw = Math.max(1, r.width || 1000);
+      const nh = Math.max(1, r.height || 700);
+      const prev = cssRef.current;
+      cssRef.current = { w: nw, h: nh };
+      setCssW(nw);
+      setCssH(nh);
+      // Satu definisi transform: pertahankan pusat + zoom agar SVG, Canvas,
+      // dan hit-test tetap sejajar (termasuk perubahan tinggi saja / panel / orientasi).
+      const next = resizePreserveScale(vbRef.current, prev.w, prev.h, nw, nh);
+      if (next) applyVbSync(next);
+      else if (!activeId) applyVbSync(fitViewBox(nw, nh, doc.width, doc.height));
+      else fitTo(geomBox(activeId));
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [doc.width, doc.height, activeId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc.width, doc.height, activeId, applyVbSync]);
 
   const resetView = () => {
     if (activeId) fitTo(geomBox(activeId));
     else fitTo(null);
   };
-  const zoom = (factor: number) => setVb((current) => {
+  const zoom = (factor: number) => {
+    const current = vbRef.current;
     const width = Math.min(doc.width * 4, Math.max(2, current.w * factor));
     const height = current.h * width / current.w;
-    return { x: current.x + (current.w - width) / 2, y: current.y + (current.h - height) / 2, w: width, h: height };
-  });
-
-  const eff = (id: string, base: SeatStatus): SeatStatus => {
-    if (picks.has(id)) return 'pick';
-    return sim.get(id) ?? base;
+    applyVbSync({ x: current.x + (current.w - width) / 2, y: current.y + (current.h - height) / 2, w: width, h: height });
   };
 
-  const toggle = (id: string, base: SeatStatus, invalid: boolean) => {
-    if (invalid || drag.current?.moved) return;
-    setConfirmed(false);
-    const cur = eff(id, base);
-    if (cur === 'available' || cur === 'pick') {
-      setPicks((prev) => {
-        const n = new Set(prev);
-        if (n.has(id)) n.delete(id);
-        else n.add(id);
-        return n;
-      });
+  const processHover = useCallback((clientX: number, clientY: number) => {
+    const el = svgRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const w = toWorld(clientX, clientY, r, vbRef.current);
+    const hit = queryPoint(index, w[0], w[1], 8);
+    const inView = hit && activeId && hit.seat.sectionId === activeId
+      ? seatMap.get(hit.seat.id) ?? null
+      : null;
+    const prevId = hoverSeatRef.current?.id ?? null;
+    const nextId = inView?.id ?? null;
+    if (prevId !== nextId) {
+      hoverSeatRef.current = inView;
+      const tip = canvasTipRef.current;
+      if (tip) {
+        if (inView) {
+          const k = Math.max(1, r.width) / Math.max(1, vbRef.current.w);
+          const wrap = tip.parentElement?.getBoundingClientRect();
+          const sx = (inView.x - vbRef.current.x) * k + (wrap ? r.left - wrap.left : 0);
+          const sy = (inView.y - vbRef.current.y) * k + (wrap ? r.top - wrap.top : 0);
+          tip.style.display = 'block';
+          tip.style.transform = `translate(${sx + 12}px, ${sy - 12}px)`;
+          tip.textContent = `${inView.row}${inView.number} · Rp${inView.price.toLocaleString('id-ID')}`;
+        } else {
+          tip.style.display = 'none';
+        }
+      }
+      const host = el.parentElement;
+      if (host) host.style.cursor = inView ? 'pointer' : '';
+      seatCanvasRef.current?.requestRedraw();
     }
-  };
+  }, [index, activeId, seatMap]);
+
+  const scheduleHover = useCallback((clientX: number, clientY: number) => {
+    hoverPending.current = { x: clientX, y: clientY };
+    if (hoverRaf.current !== 0) return;
+    if (typeof requestAnimationFrame !== 'function') {
+      const p = hoverPending.current;
+      hoverPending.current = null;
+      if (p) processHover(p.x, p.y);
+      return;
+    }
+    hoverRaf.current = requestAnimationFrame(() => {
+      hoverRaf.current = 0;
+      const p = hoverPending.current;
+      hoverPending.current = null;
+      if (p) processHover(p.x, p.y);
+    });
+  }, [processHover]);
+
+  const moveSeatFocus = useCallback((dx: number, dy: number) => {
+    if (!activeId || visibleSeats.length === 0) return;
+    const cur = focusSeatRef.current ?? hoverSeatRef.current;
+    let best: EnrichedSeat | null = null;
+    let bestScore = Infinity;
+    const cx = cur ? cur.x : visibleSeats[0].x;
+    const cy = cur ? cur.y : visibleSeats[0].y;
+    for (const s of visibleSeats) {
+      const vx = s.x - cx;
+      const vy = s.y - cy;
+      if (cur && vx === 0 && vy === 0) continue;
+      const dot = vx * dx + vy * dy;
+      if (dot <= 0) continue;
+      const perp = Math.abs(vx * dy - vy * dx);
+      const score = perp * 4 + dot;
+      if (score < bestScore) {
+        bestScore = score;
+        best = s;
+      }
+    }
+    if (!best && !cur) best = visibleSeats[0];
+    if (best) {
+      focusSeatRef.current = best;
+      hoverSeatRef.current = best;
+      if (liveRef.current) {
+        const st = eff(best.id, best.status);
+        liveRef.current.textContent = `Kursi ${best.row}${best.number}, ${best.section}, Rp${best.price.toLocaleString('id-ID')}, ${st === 'pick' ? 'dipilih' : st === 'available' ? 'tersedia' : 'tidak tersedia'}`;
+      }
+      seatCanvasRef.current?.requestRedraw();
+    }
+  }, [activeId, visibleSeats, eff]);
+
+  const activateFocused = useCallback(() => {
+    const cur = focusSeatRef.current ?? hoverSeatRef.current;
+    if (!cur || cur.invalid) return;
+    toggle(cur.id, cur.status, !!cur.invalid);
+    if (liveRef.current) liveRef.current.textContent = `Kursi ${cur.row}${cur.number} dipilih`;
+  }, [toggle]);
+
+  const buildSeatBase = useCallback((out: SeatDrawSpec[]) => {
+    out.length = 0;
+    if (!activeId || !seatsAsCanvas) return;
+    const v = vbRef.current;
+    const m = cullMargin(v, 8);
+    const refs = baseRefs.current;
+    refs.length = 0;
+    queryBoxVisible(index, v.x - m, v.y - m, v.x + v.w + m, v.y + v.h + m, refs);
+    const pool = specPool.current;
+    for (let i = 0; i < refs.length; i++) {
+      const s = refs[i].seat;
+      if (s.sectionId !== activeId) continue;
+      const en = seatMap.get(s.id);
+      if (!en) continue;
+      const st = eff(s.id, s.status);
+      const bad = !!s.invalid;
+      const clickable = !bad && (st === 'available' || st === 'pick');
+      let sp = pool[i];
+      if (!sp) {
+        sp = { x: 0, y: 0, r: 8, fill: '', alpha: 1, dimmed: false };
+        pool[i] = sp;
+      }
+      sp.x = s.x;
+      sp.y = s.y;
+      sp.r = s.radius ?? 8;
+      sp.fill = bad || !clickable ? '#DBDFE7' : en.color;
+      sp.alpha = bad ? 0.5 : clickable ? 1 : 0.75;
+      sp.dimmed = false;
+      out.push(sp);
+    }
+  }, [index, activeId, seatsAsCanvas, seatMap, eff]);
+
+  const buildSeatOverlay = useCallback((out: OverlaySpec[]) => {
+    out.length = 0;
+    if (!activeId || !seatsAsCanvas) return;
+    for (const id of picksRef.current) {
+      const s = seatMap.get(id);
+      if (!s || s.sectionId !== activeId) continue;
+      out.push({ x: s.x, y: s.y, r: s.radius ?? 8, kind: 'picked' });
+    }
+    const hov = hoverSeatRef.current;
+    if (hov && hov.sectionId === activeId && !hov.invalid) {
+      const st = eff(hov.id, hov.status);
+      if (st === 'available' || st === 'pick') {
+        out.push({ x: hov.x, y: hov.y, r: hov.radius ?? 8, kind: 'hover' });
+      }
+    }
+    const foc = focusSeatRef.current;
+    if (foc && foc.id !== hov?.id && foc.sectionId === activeId && !foc.invalid) {
+      out.push({ x: foc.x, y: foc.y, r: foc.radius ?? 8, kind: 'hover' });
+    }
+  }, [activeId, seatsAsCanvas, seatMap, eff]);
 
   const simulate = () => {
     const m = new Map<string, SeatStatus>();
@@ -210,18 +479,56 @@ export default function Preview() {
             <strong>{activeLabel}</strong>
           </div>
         )}
+        <div style={{ position: 'absolute', inset: 0 }}>
         <svg ref={svgRef} viewBox={viewBoxStr(vb)} className="canvas" aria-label={activeId ? `Denah section ${activeLabel}` : 'Denah venue'}
-          onPointerDown={(event) => { if (event.button !== 0) return; drag.current = { x: event.clientX, y: event.clientY, vb, moved: false }; }}
+          tabIndex={seatsAsCanvas ? 0 : undefined}
+          onKeyDown={seatsAsCanvas ? (event) => {
+            const steps: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+            const step = steps[event.key];
+            if (step) { event.preventDefault(); moveSeatFocus(step[0], step[1]); }
+            else if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activateFocused(); }
+          } : undefined}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            const rect = svgRef.current?.getBoundingClientRect();
+            drag.current = {
+              x: event.clientX, y: event.clientY, vb: vbRef.current, moved: false,
+              rectW: Math.max(1, rect?.width ?? 1000), rectH: Math.max(1, rect?.height ?? 700),
+            };
+          }}
           onPointerMove={(event) => {
             const start = drag.current;
-            const rect = svgRef.current?.getBoundingClientRect();
-            if (!start || !rect) return;
+            // Hover kanvas-mode via indeks (tanpa setState).
+            if (seatsAsCanvas && activeId && start && !start.moved) scheduleHover(event.clientX, event.clientY);
+            else if (seatsAsCanvas && activeId && !start) scheduleHover(event.clientX, event.clientY);
+            if (!start) return;
             const dx = event.clientX - start.x, dy = event.clientY - start.y;
             if (Math.abs(dx) + Math.abs(dy) > 4) { start.moved = true; event.currentTarget.setPointerCapture(event.pointerId); }
-            if (start.moved) setVb({ ...start.vb, x: start.vb.x - dx * start.vb.w / rect.width, y: start.vb.y - dy * start.vb.h / rect.height });
+            if (start.moved) scheduleVb({ ...start.vb, x: start.vb.x - dx * start.vb.w / start.rectW, y: start.vb.y - dy * start.vb.h / start.rectH });
           }}
-          onPointerUp={() => { setTimeout(() => { drag.current = null; }, 0); }}
-          onPointerCancel={() => { drag.current = null; }}>
+          onPointerUp={(event) => {
+            // Klik kanvas-mode: hit-test via indeks bila bukan pan.
+            if (seatsAsCanvas && activeId && drag.current && !drag.current.moved) {
+              const rect = svgRef.current?.getBoundingClientRect();
+              if (rect) {
+                const w = toWorld(event.clientX, event.clientY, rect, vbRef.current);
+                const hit = queryPoint(index, w[0], w[1], 8);
+                if (hit && hit.seat.sectionId === activeId) {
+                  const en = seatMap.get(hit.seat.id);
+                  if (en && !en.invalid) {
+                    const st = eff(en.id, en.status);
+                    if (st === 'available' || st === 'pick') {
+                      focusSeatRef.current = en;
+                      toggle(en.id, en.status, !!en.invalid);
+                    }
+                  }
+                }
+              }
+            }
+            setTimeout(() => { drag.current = null; }, 0);
+          }}
+          onPointerCancel={() => { drag.current = null; }}
+          onPointerLeave={() => { hoverSeatRef.current = null; seatCanvasRef.current?.requestRedraw(); const tip = canvasTipRef.current; if (tip) tip.style.display = 'none'; }}>
           <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} fill="#F5F7FA" />
           {doc.backgroundImage && (
             <image href={doc.backgroundImage} x={0} y={0} width={doc.width} height={doc.height} opacity={0.25} preserveAspectRatio="none" />
@@ -323,7 +630,7 @@ export default function Preview() {
 
             return null;
           })}
-          {activeId && visibleSeats.map((s) => {
+          {activeId && !seatsAsCanvas && visibleSeats.map((s) => {
             const st = eff(s.id, s.status);
             const bad = !!s.invalid;
             const clickable = !bad && (st === 'available' || st === 'pick');
@@ -344,6 +651,15 @@ export default function Preview() {
             );
           })}
         </svg>
+        {activeId && seatsAsCanvas && (
+          <SeatCanvas ref={seatCanvasRef} vb={vb} baseRev={baseRevRef.current} overlayRev={picks}
+            buildBase={buildSeatBase} buildOverlay={buildSeatOverlay}
+            simpleDots={lod.level === 'dot'} label="preview" />
+        )}
+        <div ref={canvasTipRef} role="status"
+          style={{ display: 'none', position: 'absolute', left: 0, top: 0, pointerEvents: 'none', background: '#0f172a', color: '#fff', fontSize: 12, padding: '2px 8px', borderRadius: 6, zIndex: 5 }} />
+        <div ref={liveRef} aria-live="polite" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }} />
+        </div>
         {!activeId && orphanSeats.length > 0 && (
           <div className="orion-venue-note">
             <button onClick={() => enter(ORPHAN_ID)}>Masuk Tanpa section</button>

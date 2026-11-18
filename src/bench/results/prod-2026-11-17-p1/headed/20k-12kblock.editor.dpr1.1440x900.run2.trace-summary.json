@@ -1,0 +1,102 @@
+[
+  {
+    "name": "RunTask",
+    "ms": 645.85
+  },
+  {
+    "name": "ThreadControllerImpl::RunTask",
+    "ms": 639.41
+  },
+  {
+    "name": "FunctionCall",
+    "ms": 352.37
+  },
+  {
+    "name": "FireAnimationFrame",
+    "ms": 342.29
+  },
+  {
+    "name": "RunMicrotasks",
+    "ms": 272.9
+  },
+  {
+    "name": "EventDispatch",
+    "ms": 48.98
+  },
+  {
+    "name": "Layout",
+    "ms": 46.09
+  },
+  {
+    "name": "Paint",
+    "ms": 30.23
+  },
+  {
+    "name": "SimpleWatcher::OnHandleReady",
+    "ms": 23.97
+  },
+  {
+    "name": "Receive mojo message",
+    "ms": 17.75
+  },
+  {
+    "name": "PrePaint",
+    "ms": 17.58
+  },
+  {
+    "name": "Layerize",
+    "ms": 16.83
+  },
+  {
+    "name": "MinorGC",
+    "ms": 16.63
+  },
+  {
+    "name": "TimerFire",
+    "ms": 15.99
+  },
+  {
+    "name": "UpdateLayoutTree",
+    "ms": 15.93
+  },
+  {
+    "name": "V8.GC_SCAVENGER",
+    "ms": 15.53
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE",
+    "ms": 15.43
+  },
+  {
+    "name": "Commit",
+    "ms": 14.7
+  },
+  {
+    "name": "HitTest",
+    "ms": 14.07
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE_PARALLEL_PHASE",
+    "ms": 13.93
+  },
+  {
+    "name": "V8.StackGuard",
+    "ms": 8.89
+  },
+  {
+    "name": "V8.HandleInterrupts",
+    "ms": 8.75
+  },
+  {
+    "name": "EvaluateScript",
+    "ms": 7.95
+  },
+  {
+    "name": "V8.GC_SCAVENGER_SCAVENGE_PARALLEL",
+    "ms": 7.11
+  },
+  {
+    "name": "V8.GC_MC_INCREMENTAL",
+    "ms": 3.58
+  }
+]
