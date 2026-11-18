@@ -442,17 +442,55 @@ label.btn.filepick input { max-width: 100%; }
 .orion-picked { flex:1; padding:24px; overflow:auto; }
 .orion-picked h3 { display:flex; gap:10px; align-items:center; font-size:16px; margin:0 0 20px; }
 .orion-picked h3 > span { border-radius:20px; padding:2px 8px; background:#eef4ff; color:#0049cc; font-size:12px; }
+.orion-categories { padding:20px 24px 4px; border-bottom:1px solid #dbdfe7; background:#fff; }
+.orion-categories h3 { margin:0 0 12px; font-size:18px; font-weight:600; color:#475467; }
+.orion-ticket-filter { margin:0 0 12px; }
+.orion-ticket-filter p { margin:0 0 12px; font-size:14px; font-weight:600; color:#101828; }
+.orion-ticket-filter p > span { color:#0049cc; }
+.orion-ticket-pill { display:inline-flex; align-items:stretch; overflow:hidden; border:1px solid #dbdfe7; border-radius:999px; background:#fff; box-shadow:0 1px 2px rgb(16 24 40 / 0.05); }
+.orion-ticket-pill > span { display:inline-flex; align-items:center; padding:8px 16px; font-size:14px; font-weight:600; color:#101828; }
+.orion-ticket-pill button { display:inline-flex; align-items:center; padding:0 14px; border:0; border-left:1px solid #dbdfe7; border-radius:0; background:none; color:#101828; min-height:0; }
+.orion-ticket-pill button:hover { color:#0049cc; border-color:#dbdfe7; }
+.orion-ticket-list { list-style:none; margin:0 0 16px; padding:0; display:flex; flex-direction:column; gap:16px; }
+.orion-ticket-card { position:relative; display:flex; overflow:hidden; background:#fff; border:1px solid #dbdfe7; border-radius:8px; box-shadow:0 0 4px 0 rgb(0 0 0 / 0.15); }
+.orion-ticket-card.is-clickable { cursor:pointer; transition:background 0.12s ease-out, box-shadow 0.12s ease-out; }
+.orion-ticket-card.is-clickable:hover { background:#f5f7fa; }
+/* Ring fokus ala Orion (Tailwind focus:ring-2): tanpa outline, menempel di kartu,
+   dan hanya tampil untuk keyboard (focus-visible) agar klik mouse tidak menyisakan ring. */
+.orion-ticket-card.is-clickable:focus { outline:none; }
+.orion-ticket-card.is-clickable:focus:not(:focus-visible) { box-shadow:0 0 4px 0 rgb(0 0 0 / 0.15); }
+.orion-ticket-card.is-clickable:focus-visible { outline:none; box-shadow:0 0 0 2px #0049cc, 0 0 4px 0 rgb(0 0 0 / 0.15); }
+/* Tombol di dalam Preview: ganti outline+offset global dengan ring agar konsisten dengan Orion. */
+.orion-preview button:focus-visible { outline:none; box-shadow:0 0 0 2px #fff, 0 0 0 4px #0049cc; }
+.orion-ticket-accent { flex:none; width:4px; background:#fb7221; }
+.orion-ticket-body { flex:1 1 auto; min-width:0; padding:16px 16px 8px; }
+.orion-ticket-body h4 { margin:0 0 8px; font-size:15px; font-weight:500; color:#101828; overflow-wrap:anywhere; word-break:break-word; }
+.orion-ticket-meta { margin:0; font-size:12.5px; color:#667085; overflow-wrap:anywhere; }
+.orion-ticket-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px; padding-top:12px; border-top:1px dashed #dbdfe7; }
+.orion-ticket-foot strong { font-size:15px; font-weight:600; color:#101828; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.orion-ticket-cta { flex-shrink:0; font-size:12.5px; font-weight:600; color:#0049cc; }
+.orion-cat-empty { margin:0 0 16px; font-size:13px; line-height:1.6; color:#667085; }
 .orion-empty { padding:32px 0; text-align:center; }
-.orion-seat-group { padding:16px 0; border-bottom:1px solid #eaecf0; }
-.orion-seat-group h4 { display:flex; gap:8px; align-items:center; margin:0 0 12px; font-size:14px; }
-.orion-seat-group h4 > span { margin-left:auto; font-size:13px; font-weight:400; }
-.orion-seat-group i,.orion-legend-content i { width:16px; height:16px; border-radius:50%; flex-shrink:0; }
+.orion-seat-group { position:relative; display:flex; overflow:hidden; margin:0 0 16px; background:#fff; border:1px solid #eaecf0; border-radius:12px; box-shadow:0 4px 16px rgb(16 24 40 / 0.08); }
+.orion-seat-accent { flex:none; width:4px; background:#0049cc; }
+.orion-seat-body { flex:1 1 auto; min-width:0; padding:16px; }
+.orion-seat-head { display:flex; align-items:flex-start; gap:12px; margin-bottom:12px; }
+.orion-seat-head > div { flex:1 1 auto; min-width:0; }
+.orion-seat-group h4 { margin:0; font-size:18px; line-height:1.3; font-weight:700; color:#101828; overflow-wrap:anywhere; }
+.orion-seat-head p { margin:2px 0 0; font-size:14px; color:#667085; }
+.orion-group-remove { flex:none; width:32px; height:32px; min-height:0; margin:-8px -8px 0 0; padding:0; display:inline-grid; place-items:center; border-radius:50%; border:1px solid #fecdca; background:#fef3f2; color:#b42318; }
+.orion-group-remove:hover { border-color:#b42318; }
 .orion-seat-chips { display:flex; flex-wrap:wrap; gap:8px; }
-.orion-seat-chips button { display:flex; gap:10px; align-items:center; border-radius:6px; background:white; color:#0049cc; border:1px solid #dbdfe7; }
-.orion-checkout { padding:20px; border-top:1px solid #dbdfe7; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.orion-seat-chips button { display:inline-flex; gap:8px; align-items:center; border-radius:999px; background:#eef4ff; color:#0049cc; border:1px solid transparent; padding:8px 12px; font-weight:500; }
+.orion-seat-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px; padding-top:12px; border-top:1px dashed #dbdfe7; font-size:14px; color:#667085; }
+.orion-seat-foot strong { font-size:18px; color:#101828; }
+.orion-seat-group i,.orion-legend-content i { width:16px; height:16px; border-radius:50%; flex-shrink:0; }
+.orion-checkout { padding:16px 20px; border-top:1px solid #dbdfe7; background:#fff; box-shadow:0 -4px 16px rgb(16 24 40 / 0.06); display:flex; justify-content:space-between; align-items:center; gap:12px; }
 .orion-checkout small { display:block; color:#667085; font-size:12px; }
-.orion-checkout strong { display:block; margin-top:6px; font-size:20px; }
-.orion-checkout button { background:#0049cc; color:white; border:0; border-radius:8px; min-height:44px; padding:12px 24px; }
+.orion-checkout strong { display:block; margin-top:4px; font-size:20px; }
+.orion-checkout .orion-detail-link { margin-top:6px; padding:0; border:0; background:none; color:#0049cc; font-size:13px; font-weight:600; min-height:0; display:inline-flex; align-items:center; gap:4px; }
+.orion-checkout .orion-detail-link:disabled { color:#b2b7c0; cursor:default; }
+.orion-checkout button { background:#0049cc; color:white; border:0; border-radius:8px; min-height:44px; min-width:160px; padding:12px 24px; font-weight:600; }
 .orion-checkout button:disabled { background:#dbdfe7; color:#667085; cursor:not-allowed; }
 .orion-confirmation { margin:0; padding:12px 20px; background:#eef4ff; }
 .orion-map { position:relative; width:65%; min-width:0; overflow:hidden; background:#f5f7fa; }
@@ -460,9 +498,10 @@ label.btn.filepick input { max-width: 100%; }
 .orion-map .canvas:active { cursor:grabbing; }
 .orion-map .seatclick { cursor:pointer; }
 .orion-map circle:focus-visible { outline:none; stroke:#0049cc; stroke-width:4; }
-.orion-sectionbar { position:absolute; top:16px; left:16px; z-index:5; display:flex; align-items:center; gap:12px; padding:10px 12px; background:#fffffff0; border:1px solid var(--border); border-radius:10px; font-size:13px; }
+.orion-sectionbar { position:absolute; top:16px; left:16px; z-index:5; display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; padding:10px 12px; background:#fffffff0; border:1px solid var(--border); border-radius:12px; box-shadow:0 4px 16px rgb(16 24 40 / 0.08); font-size:13px; max-width:min(480px, calc(100% - 120px)); }
 .orion-sectionbar button { display:inline-flex; align-items:center; gap:6px; }
-.orion-sectionbar span { color:#64748b; }
+.orion-sectionbar strong { overflow-wrap:anywhere; }
+.orion-sectionbar span { color:#344054; font-size:12.5px; }
 .orion-venue-note { position:absolute; bottom:70px; left:20px; z-index:5; }
 .orion-venue-note button { background:white; border:1px solid #dbdfe7; border-radius:8px; padding:10px 14px; box-shadow:0 2px 8px #10182810; }
 .orion-zoom { position:absolute; top:16px; right:16px; border:1px solid #0049cc; border-radius:28px; overflow:hidden; background:white; }
@@ -470,9 +509,13 @@ label.btn.filepick input { max-width: 100%; }
 .orion-zoom button + button { border-top:1px solid #0049cc; }
 .orion-fit { position:absolute; right:16px; top:118px; color:#0049cc; background:white; width:44px; height:44px; display:grid; place-items:center; }
 .orion-legends { position:absolute; bottom:20px; left:20px; }
-.orion-legends > button { display:flex; gap:16px; align-items:center; background:white; border:0; padding:12px 16px; color:#475467; box-shadow:0 2px 8px #10182810; }
-.orion-legend-content { position:absolute; bottom:56px; left:0; width:240px; max-height:320px; overflow:auto; padding:16px; background:white; border-radius:8px; box-shadow:0 4px 16px #10182818; }
-.orion-legend-content > div { display:flex; gap:12px; align-items:center; font-size:12px; padding:6px 0; }
+.orion-legends > button { display:flex; gap:8px; align-items:center; justify-content:space-between; min-width:140px; background:white; border:1px solid transparent; border-radius:12px; padding:12px 16px; font-size:14px; font-weight:500; color:#475467; box-shadow:0 2px 8px #10182810; }
+.orion-legend-content { position:absolute; bottom:56px; left:0; width:248px; max-height:320px; overflow:auto; padding:12px 16px; background:white; border-radius:12px; box-shadow:0 8px 24px #10182826; }
+.orion-legend-content > div { display:flex; gap:12px; align-items:flex-start; font-size:12px; padding:8px 0; }
+.orion-legend-content i { margin-top:1px; }
+.orion-legend-text { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:1px; color:#475467; }
+.orion-legend-text strong { font-size:12px; font-weight:500; color:#1d2939; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.orion-legend-text small { font-size:12px; color:#667085; }
 .orion-legend-content hr { border:0; border-top:1px solid #eaecf0; }
 .orion-selected-marker { border:2px solid #0f172a; }
 .orion-map-hint { position:absolute; bottom:30px; right:20px; color:#667085; font-size:12px; pointer-events:none; }
@@ -482,6 +525,7 @@ label.btn.filepick input { max-width: 100%; }
  .orion-map { height:60vh; min-height:360px; }
  .orion-map .canvas { min-height:360px; }
  .orion-selection header { padding:16px; }
+ .orion-categories { padding:16px 16px 4px; }
  .orion-picked { padding:16px; }
  .orion-empty { padding:8px 0; }
  .orion-map-hint { display:none; }

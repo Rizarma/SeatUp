@@ -11,7 +11,7 @@ import { cullMargin, lodFor, resizePreserveScale } from '../lib/viewTransform';
 import SeatCanvas, { type SeatCanvasHandle } from './SeatCanvas';
 import type { OverlaySpec, SeatDrawSpec } from '../lib/seatCanvas';
 import { CANVAS_SEAT_THRESHOLD } from './EditorCanvas';
-import { Plus, Minus, Maximize, ChevronDown, X, ArrowLeft } from 'lucide-react';
+import { Plus, Minus, Maximize, ChevronDown, ChevronUp, X, ArrowLeft } from 'lucide-react';
 
 const ORPHAN_ID = '__orphan__';
 const ORPHAN_COLOR = '#94a3b3';
@@ -30,6 +30,7 @@ interface EnrichedSeat {
   section: string;
   sectionId: string;
   color: string;
+  categoryId: string | null;
   categoryName: string;
 }
 
@@ -106,6 +107,7 @@ export default function Preview() {
           section: isSec ? owner.label : 'Tanpa section',
           sectionId: secId,
           color: isSec ? index.sectionColor.get(owner.id) ?? ORPHAN_COLOR : ORPHAN_COLOR,
+          categoryId: isSec ? owner.categoryId ?? null : null,
           categoryName: isSec ? (owner.categoryId ? categoryById(doc, owner.categoryId)?.name ?? owner.label : owner.label) : 'Tanpa section',
         });
       }
@@ -270,6 +272,33 @@ export default function Preview() {
     const height = current.h * width / current.w;
     applyVbSync({ x: current.x + (current.w - width) / 2, y: current.y + (current.h - height) / 2, w: width, h: height });
   };
+  // Wheel-zoom ala Orion-FE: scroll di atas denah = zoom berjangkar kursor (bukan scroll halaman).
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      // Kurva ala Orion-FE (1.2^delta dinormalisasi, dibatasi), dibuat lebih bertenaga.
+      // Skala viewBox berbanding terbalik dengan Orion: faktor > 1 = zoom out.
+      const delta = (e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY) / 60;
+      const bounded = Math.max(-2, Math.min(2, delta));
+      const factor = Math.pow(1.2, bounded);
+      const current = vbRef.current;
+      const width = Math.min(doc.width * 4, Math.max(2, current.w * factor));
+      if (width === current.w) return;
+      const height = current.h * width / current.w;
+      const rawMx = (e.clientX - rect.left) / rect.width;
+      const rawMy = (e.clientY - rect.top) / rect.height;
+      const mx = Number.isFinite(rawMx) ? rawMx : 0.5;
+      const my = Number.isFinite(rawMy) ? rawMy : 0.5;
+      applyVbSync({ x: current.x + (current.w - width) * mx, y: current.y + (current.h - height) * my, w: width, h: height });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc.width, applyVbSync]);
 
   const processHover = useCallback((clientX: number, clientY: number) => {
     const el = svgRef.current;
@@ -432,20 +461,58 @@ export default function Preview() {
 
   const picked = seats.filter((s) => picks.has(s.id));
   const total = picked.reduce((a, s) => a + s.price, 0);
-  const bySection = new Map<string, { n: number; sub: number; price: number }>();
-  for (const s of picked) {
-    const e = bySection.get(s.section) ?? { n: 0, sub: 0, price: s.price };
-    e.n++;
-    e.sub += s.price;
-    bySection.set(s.section, e);
-  }
+  // Kelompok ala Orion-FE: per tipe tiket (bukan per section), urut kategori Editor.
+  const ticketGroups = useMemo(() => {
+    const groups: { key: string; ticketId: string | null; ticketType: string; ticketColor: string; seats: EnrichedSeat[]; count: number; sub: number }[] = [];
+    for (const c of doc.categories) {
+      const items = picked.filter((s) => s.categoryId === c.id);
+      if (items.length === 0) continue;
+      groups.push({
+        key: c.id,
+        ticketId: c.id,
+        ticketType: c.name,
+        ticketColor: c.color,
+        seats: items,
+        count: items.length,
+        sub: items.reduce((a, s) => a + s.price, 0),
+      });
+    }
+    const rest = picked.filter((s) => !s.categoryId || !doc.categories.some((c) => c.id === s.categoryId));
+    if (rest.length > 0) {
+      groups.push({
+        key: ORPHAN_ID,
+        ticketId: null,
+        ticketType: 'Tanpa section',
+        ticketColor: ORPHAN_COLOR,
+        seats: rest,
+        count: rest.length,
+        sub: rest.reduce((a, s) => a + s.price, 0),
+      });
+    }
+    return groups;
+  }, [picked, doc.categories]);
 
-  const legendSections = doc.categories.map((c) => {
+  const activeCategory = activeSection?.categoryId ? categoryById(doc, activeSection.categoryId) : null;
+  // Kartu tiket ala Orion-FE: satu kartu per kategori (urutan Editor),
+  // klik kartu = zoom ke section pertama pemilik tiket itu (readOnly, pilih tetap via denah).
+  const ticketCards = useMemo(() => doc.categories.map((c) => {
     const using = sections.filter((o) => o.categoryId === c.id);
-    const label = using.length > 0 && using.every((o) => o.label === c.name) ? c.name : using.length === 1 ? `${c.name} (${using[0].label}) · Rp${c.price.toLocaleString('id-ID')}` : `${c.name} · Rp${c.price.toLocaleString('id-ID')}`;
-    return { id: c.id, label, color: c.color };
-  });
-  if (orphanSeats.length > 0) legendSections.push({ id: ORPHAN_ID, label: 'Tanpa section', color: ORPHAN_COLOR });
+    const seatCount = seats.filter((s) => s.categoryId === c.id).length;
+    const meta = using.length === 1
+      ? `${using[0].label} · ${seatCount} kursi`
+      : using.length > 1
+        ? `${using.length} section · ${seatCount} kursi`
+        : `${seatCount} kursi · belum dipakai section`;
+    return { id: c.id, name: c.name, price: c.price, color: c.color, meta, sectionId: using[0]?.id ?? null };
+  }), [doc.categories, sections, seats]);
+  const visibleTicketCards = activeCategory ? ticketCards.filter((t) => t.id === activeCategory.id) : activeId ? [] : ticketCards;
+  const handleTicketClick = useCallback((ticketId: string) => {
+    const target = sections.find((o) => o.categoryId === ticketId) ?? null;
+    if (!target || target.id === activeId) return;
+    enter(target.id);
+  }, [sections, activeId, enter]);
+  const legendSections = doc.categories.map((c) => ({ id: c.id, name: c.name, price: c.price, color: c.color }));
+  if (orphanSeats.length > 0) legendSections.push({ id: ORPHAN_ID, name: 'Tanpa section', price: NaN, color: ORPHAN_COLOR });
 
   return (
     <div className="preview orion-preview">
@@ -457,17 +524,90 @@ export default function Preview() {
       <div className="orion-layout">
         <aside className="orion-selection">
           <header><span className="orion-eyebrow">PILIH KURSI</span><h2>{doc.name}</h2><p>Pilih kursi yang kamu inginkan pada denah.</p></header>
+          <section className="orion-categories" aria-label="Kategori tiket">
+            {activeId && activeLabel ? (
+              <div className="orion-ticket-filter">
+                <p>Lihat section <span>{activeLabel}</span></p>
+                <div className="orion-ticket-pill">
+                  <span>{activeLabel}</span>
+                  <button type="button" onClick={leave} aria-label="Hapus filter section">
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <h3>Pilih tiket</h3>
+            )}
+            {doc.categories.length === 0 ? (
+              <p className="orion-cat-empty">Belum ada kategori tiket</p>
+            ) : visibleTicketCards.length === 0 ? (
+              <p className="orion-cat-empty">Tidak ada tiket untuk section ini.</p>
+            ) : (
+              <ul className="orion-ticket-list">
+                {visibleTicketCards.map((t) => {
+                  const selected = activeCategory?.id === t.id;
+                  return (
+                    <li key={t.id}>
+                      <div
+                        role={t.sectionId ? 'button' : undefined}
+                        tabIndex={t.sectionId ? 0 : undefined}
+                        aria-label={t.sectionId ? `Lihat section ${t.name}` : t.name}
+                        aria-current={selected || undefined}
+                        className={`orion-ticket-card${t.sectionId ? ' is-clickable' : ''}`}
+                        onClick={t.sectionId ? () => handleTicketClick(t.id) : undefined}
+                        onKeyDown={t.sectionId ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTicketClick(t.id); } } : undefined}
+                      >
+                        <span className="orion-ticket-accent" aria-hidden="true" style={{ background: t.color }} />
+                        <div className="orion-ticket-body">
+                          <h4>{t.name}</h4>
+                          <p className="orion-ticket-meta">{t.meta}</p>
+                          <div className="orion-ticket-foot">
+                            <strong>{money(t.price)}</strong>
+                            {t.sectionId && <span className="orion-ticket-cta">{selected ? 'Section aktif' : 'Lihat section'}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
           <div className="orion-picked" aria-live="polite">
             <h3>Kursi dipilih <span>{picked.length}</span></h3>
             {picked.length === 0 && <p className="orion-empty">Belum ada kursi dipilih.<br />Klik kursi yang tersedia untuk mulai memilih.</p>}
-            {[...bySection.entries()].map(([section, group]) => (
-              <div className="orion-seat-group" key={section}>
-                <h4><i style={{ background: picked.find((seat) => seat.section === section)?.color }} />{section}<span>{money(group.sub)}</span></h4>
-                <div className="orion-seat-chips">{picked.filter((seat) => seat.section === section).map((seat) => <button key={seat.id} onClick={() => toggle(seat.id, seat.status, false)} aria-label={`Lepas kursi ${seat.row}${seat.number}`}>{seat.row}{seat.number}<X size={14} /></button>)}</div>
+            {ticketGroups.map((group) => (
+              <div className="orion-seat-group" key={group.key}>
+                <span className="orion-seat-accent" aria-hidden="true" style={{ background: group.ticketColor }} />
+                <div className="orion-seat-body">
+                  <div className="orion-seat-head">
+                    <div>
+                      <h4>{group.ticketType}</h4>
+                      <p>Kursi dipilih</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="orion-group-remove"
+                      onClick={() => {
+                        setConfirmed(false);
+                        setPicks((prev) => {
+                          const n = new Set(prev);
+                          for (const s of group.seats) n.delete(s.id);
+                          return n;
+                        });
+                      }}
+                      aria-label={`Hapus semua kursi ${group.ticketType}`}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className="orion-seat-chips">{group.seats.map((seat) => <button key={seat.id} onClick={() => toggle(seat.id, seat.status, false)} aria-label={`Lepas kursi ${seat.row}${seat.number}`}>{seat.row}{seat.number}<X size={14} /></button>)}</div>
+                  <div className="orion-seat-foot"><span>{group.count} kursi</span><strong>{money(group.sub)}</strong></div>
+                </div>
               </div>
             ))}
           </div>
-          <footer className="orion-checkout"><div><small>Subtotal ({picked.length} tiket)</small><strong>{money(total)}</strong></div><button disabled={!picked.length} onClick={() => setConfirmed(true)}>Pesan Tiket</button></footer>
+          <footer className="orion-checkout"><div><small>Subtotal ({picked.length} tiket)</small><strong>{money(total)}</strong><button type="button" className="orion-detail-link" disabled={picked.length === 0}>Lihat detail</button></div><button disabled={!picked.length} onClick={() => setConfirmed(true)}>Pesan Tiket</button></footer>
           {confirmed && <p className="orion-confirmation" role="status">Simulasi selesai: {picked.length} kursi dipilih. Tidak ada pesanan atau reservasi dibuat.</p>}
         </aside>
         <div className="orion-map">
@@ -477,6 +617,7 @@ export default function Preview() {
               <ArrowLeft size={16} /> Kembali ke venue
             </button>
             <strong>{activeLabel}</strong>
+            {activeCategory && <span>{activeCategory.name} · {money(activeCategory.price)}</span>}
           </div>
         )}
         <div style={{ position: 'absolute', inset: 0 }}>
@@ -665,16 +806,24 @@ export default function Preview() {
             <button onClick={() => enter(ORPHAN_ID)}>Masuk Tanpa section</button>
           </div>
         )}
-        <div className="orion-zoom"><button aria-label="Perbesar denah" onClick={() => zoom(0.8)}><Plus size={20} /></button><button aria-label="Perkecil denah" onClick={() => zoom(1.25)}><Minus size={20} /></button></div>
+        <div className="orion-zoom"><button aria-label="Perbesar denah" onClick={() => zoom(0.75)}><Plus size={20} /></button><button aria-label="Perkecil denah" onClick={() => zoom(4 / 3)}><Minus size={20} /></button></div>
         <button className="orion-fit" aria-label="Tampilkan seluruh denah" onClick={resetView}><Maximize size={18} /></button>
         <div className="orion-legends">
           {legendOpen && <div className="orion-legend-content">
-            {legendSections.map((seat) => <div key={seat.id}><i style={{ background: seat.color }} /><span>{seat.label}</span></div>)}
-            <hr /><div><i style={{ background: '#DBDFE7' }} />Tidak tersedia</div><div><i className="orion-selected-marker" />Dipilih</div>
+            {legendSections.map((seat) => (
+              <div key={seat.id}>
+                <i style={{ background: seat.color }} />
+                <span className="orion-legend-text">
+                  <strong>{seat.name}</strong>
+                  {Number.isFinite(seat.price) && <small>{money(seat.price)}</small>}
+                </span>
+              </div>
+            ))}
+            <hr /><div><i style={{ background: '#DBDFE7' }} /><span className="orion-legend-text">Tidak tersedia</span></div><div><i className="orion-selected-marker" /><span className="orion-legend-text">Dipilih</span></div>
           </div>}
-          <button onClick={() => setLegendOpen(!legendOpen)} aria-expanded={legendOpen}>Legenda<ChevronDown size={16} /></button>
+          <button onClick={() => setLegendOpen(!legendOpen)} aria-expanded={legendOpen}>Legenda{legendOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}</button>
         </div>
-        <span className="orion-map-hint">{activeId ? `Pilih kursi di ${activeLabel}` : sections.length ? 'Pilih section untuk melihat kursinya' : (seats.length ? 'Geser denah untuk melihat area lain' : 'Belum ada kursi. Buat baris di Editor.')}</span>
+        <span className="orion-map-hint">{activeId ? `Pilih kursi di ${activeLabel} · scroll untuk zoom` : sections.length ? 'Pilih section untuk melihat kursinya · scroll untuk zoom' : (seats.length ? 'Geser denah untuk melihat area lain · scroll untuk zoom' : 'Belum ada kursi. Buat baris di Editor.')}</span>
         </div>
       </div>
     </div>
