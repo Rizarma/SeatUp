@@ -1180,6 +1180,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       className={tool === 'hand' ? 'canvas hand-tool' : 'canvas'}
       aria-label={focusId ? 'Editor isi section' : 'Editor venue'}
       tabIndex={0}
+      style={{ outline: 'none' }}
+      onDragStart={(e) => e.preventDefault()}
       onKeyDown={e => {
         const steps: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
         const step = steps[e.key];
@@ -1440,9 +1442,12 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         );
       })()}
 
-      {selected?.id !== focusId && selected?.kind === 'vector' && vecBox && tool === 'select' && (() => {
+      {selected?.id !== focusId && selected?.kind === 'vector' && vecBox && tool === 'select' && !drag && (() => {
         // vecBox diukur sekali saat seleksi; saat shape digeser/di-scale (previewObj),
         // tampilkan kotak mengikuti transform preview agar garis putus-putus ikut gerak.
+        // Sengaja disembunyikan selama drag translate/vertex: shape + vertex sudah
+        // mengikuti previewObj, kotak terpisah dari sumber basi (vecBox state async +
+        // vectorCenters memo sync) sempat beda 1 frame dan terlihat flashing dari posisi lama.
         const t0 = selected.vTransform;
         const t1 = previewObj?.id === selected.id ? previewObj.vTransform : t0;
         let dx = vecBox;
@@ -1494,8 +1499,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           seleksi hanya mengikuti shape polygon + vertex bulat agar tidak ganda. */}
 
       {/* Gagang putar: lingkaran di atas pusat shape terpilih (tool select).
-          Seret mengelilingi pusat untuk memutar; Shift = snap 15°; Esc batal. */}
-      {selected && tool === 'select' && selected.id !== focusId
+          Seret mengelilingi pusat untuk memutar; Shift = snap 15°; Esc batal.
+          Disembunyikan selama drag translate/skala: konektor garisnya dihitung dari
+          box+pusat yang beda sumber (vecBox basi vs preview fresh) sehingga sempat
+          meregang/flashing dari posisi lama. Muncul lagi saat idle/rotate. */}
+      {selected && tool === 'select' && selected.id !== focusId && !drag && !scaleDrag
         && (selected.kind === 'stage' || selected.kind === 'section'
           || selected.kind === 'import-draft' || selected.kind === 'vector')
         && visible.find((o) => o.id === selected.id) && (() => {

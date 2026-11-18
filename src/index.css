@@ -533,8 +533,10 @@ label.btn.filepick input { max-width: 100%; }
 .orion-map .preview-section:focus-visible > .preview-hover-lbl,
 .orion-map g:hover > .preview-hover-lbl { display:block; }
 
-/* The editor surface is a workspace, not a selected object. */
-.canvaswrap > svg.canvas:focus, .canvaswrap > svg.canvas:focus-visible { outline:none; }
+/* The editor surface is a workspace, not a selected object.
+   Pakai descendant selector: <svg> dibungkus div absolute di dalam .canvaswrap,
+   jadi child selector (>) tidak pernah cocok dan outline sempat muncul. */
+.canvaswrap svg.canvas:focus, .canvaswrap svg.canvas:focus-visible { outline: none; box-shadow: none; }
 
 .canvas.hand-tool, .canvas.hand-tool * { cursor:grab !important; }
 .canvas.hand-tool:active, .canvas.hand-tool:active * { cursor:grabbing !important; }
