@@ -657,18 +657,19 @@ function ToolOptions({ p, tool }: { p: Props; f: RowForm; tool: string }) {
   }
   if (tool === 'polygon') {
     return (
-      <ToolShell icon={PenTool} title="Gambar polygon" sub="Klik tambah titik · Enter/klik-ganda tutup · Esc batal">
+      <ToolShell icon={PenTool} title="Gambar polygon" sub="Klik tambah titik · Klik titik awal / Enter tutup · Esc batal">
         <div className="object-config-group">
           <h4 className="subh">Cara pakai</h4>
           <ToolSteps items={[
             'Klik kanvas untuk tambah titik sudut',
-            'Enter atau klik-ganda titik awal untuk menutup',
+            'Arahkan kursor — area pratinjau mengikuti',
+            'Klik titik awal (atau Enter / klik-ganda) untuk menutup',
             'Esc untuk batalkan draf aktif',
           ]} />
         </div>
         <div className="object-config-group">
           <h4 className="subh">Setelah tertutup</h4>
-          <p className="muted">Tandai areanya sebagai section agar bisa diisi kursi. Draf tersimpan saat ganti tool. Setelah tertutup tool pindah ke Select dan objek terpilih.</p>
+          <p className="muted">Tandai areanya sebagai section agar bisa diisi kursi. Draf batal saat ganti tool (seperti Esc). Setelah tertutup tool pindah ke Select dan objek terpilih.</p>
         </div>
       </ToolShell>
     );

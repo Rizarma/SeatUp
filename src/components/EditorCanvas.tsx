@@ -240,9 +240,15 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     dragCancelledRef.current = false;
     dragPointerRef.current = pointerId;
   }, []);
-  useEffect(() => { rowGesture.current = null; shapeGesture.current = null; seatGesture.current = null; setSeatMarquee(null); onCancelRowDrag(); setCanvasHoverId(null); setHoverSeatId(null); hoverSeatRef.current = null; focusSeatRef.current = null; dragCancelledRef.current = true; dragPointerRef.current = null; setDrag(null); setScaleDrag(null); setRotateDrag(null); setPreviewObj(null); setGhost(null); }, [tool, focusId, onCancelRowDrag]);
   const [draft, setDraft] = useState<Pt[]>([]);
   const [ghost, setGhost] = useState<Ghost | null>(null);
+  /** Kursor pratinjau polygon: titik sementara mengikuti mouse (draft + kursor = area bayangan).
+   *  Disimpan dalam koordinat dokumen; posisi layar dicache untuk hitung ulang saat kamera berubah. */
+  const [polyCursor, setPolyCursor] = useState<Pt | null>(null);
+  const polyCursorClient = useRef<{ x: number; y: number } | null>(null);
+  /** Radius snap tutup polygon dalam px layar (zoom-independent). */
+  const POLY_CLOSE_SNAP_PX = 14;
+  useEffect(() => { rowGesture.current = null; shapeGesture.current = null; seatGesture.current = null; setSeatMarquee(null); onCancelRowDrag(); setCanvasHoverId(null); setHoverSeatId(null); hoverSeatRef.current = null; focusSeatRef.current = null; dragCancelledRef.current = true; dragPointerRef.current = null; setDrag(null); setScaleDrag(null); setRotateDrag(null); setPreviewObj(null); setGhost(null); setPolyCursor(null); polyCursorClient.current = null; setDraft([]); }, [tool, focusId, onCancelRowDrag]);
   // Kabari panel saat draf bentuk ada/hilang (untuk petunjuk kontekstual).
   useEffect(() => { onShapeDraftChange?.(ghost !== null); }, [ghost, onShapeDraftChange]);
   /** Posisi layar terakhir kursor saat draf shape aktif. Dipakai menghitung ulang
@@ -385,7 +391,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     else fitRef.current();
     previousFocus.current = focusId;
     dragCancelledRef.current = true; dragPointerRef.current = null;
-    setDraft([]); setGhost(null); setDrag(null); setPreviewObj(null); setScaleDrag(null); setRotateDrag(null);
+    setDraft([]); setPolyCursor(null); polyCursorClient.current = null; setGhost(null); setDrag(null); setPreviewObj(null); setScaleDrag(null); setRotateDrag(null);
     setSeatMarquee(null); seatGesture.current = null;
     hoverSeatRef.current = null; focusSeatRef.current = null;
     selectSeats([]);
@@ -463,6 +469,19 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     setGhost((g) => (g && (Math.abs(g.b[0] - w[0]) > 1e-9 || Math.abs(g.b[1] - w[1]) > 1e-9) ? { ...g, b: w } : g));
   }, [vb, tool, ghost]);
 
+  // Pratinjau polygon mengikuti kamera: hitung ulang titik kursor dari posisi
+  // layar terakhir saat zoom/pan tanpa gerak kursor (pola yang sama dengan ghost).
+  useEffect(() => {
+    if (tool !== 'polygon' || draft.length === 0) return;
+    const c = polyCursorClient.current;
+    const svg = svgRef.current;
+    if (!c || !svg) return;
+    const r = svg.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return;
+    const w = toWorld(c.x, c.y, r, vbRef.current);
+    setPolyCursor((prev) => (prev && Math.abs(prev[0] - w[0]) < 1e-9 && Math.abs(prev[1] - w[1]) < 1e-9 ? prev : w));
+  }, [vb, tool, draft.length]);
+
   /** Klik kursi: tunggal = sebaris, ganda cepat = 1 kursi, modifier = toggle satuan. */
   const activateSeat = useCallback((seatId: string, additive: boolean) => {
     const entry = index.seatById.get(seatId);
@@ -506,6 +525,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     update((d) => ({ ...d, objects: [...d.objects, obj] }));
     select(obj.id);
     setDraft([]);
+    setPolyCursor(null);
+    polyCursorClient.current = null;
     // Selesai gambar → pindah ke Select agar klik berikutnya tak sengaja menambah lagi.
     // Objek baru tetap terpilih (select di atas) sehingga panel langsung menunjukkan propertinya.
     setTool('select');
@@ -521,12 +542,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       // dari tool lain (mis. shape) tidak boleh menutup draf yang tersimpan.
       if (e.key === 'Enter' && tool === 'polygon' && draft.length >= 3) commitPolygon(draft);
       if (e.key === 'Escape') {
-        // Draf dihitung sesuai tool aktif: shape ↔ ghost, polygon ↔ draft titik.
-        // Esc pada tool shape membatalkan draf shape dan MEMPERTAHANKAN draf
-        // polygon agar bisa dilanjutkan saat kembali ke tool Polygon.
+        // Esc membatalkan semua draf aktif (polygon maupun shape), seperti
+        // pindah tool: draf polygon yang belum selesai ikut dibatalkan.
         const hadShapeWork = ghost !== null || shapeGesture.current !== null;
         const hadPolyWork = draft.length > 0;
-        const hadWork = (tool === 'polygon' ? hadPolyWork : isShapeTool(tool) ? hadShapeWork : (hadPolyWork || hadShapeWork))
+        const hadWork = (hadPolyWork || hadShapeWork)
           || drag !== null
           || previewObj !== null || scaleDrag !== null || rotateDrag !== null
           || seatMarquee !== null || rowGesture.current !== null || seatGesture.current !== null
@@ -535,15 +555,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         seatGesture.current = null;
         setSeatMarquee(null);
         onCancelRowDrag();
-        if (isShapeTool(tool)) {
-          shapeGesture.current = null;
-          setGhost(null);
-          // draf polygon dipertahankan
-        } else {
-          shapeGesture.current = null;
-          setGhost(null);
-          setDraft([]);
-        }
+        shapeGesture.current = null;
+        setGhost(null);
+        setDraft([]);
+        setPolyCursor(null);
+        polyCursorClient.current = null;
         // Batal penuh drag objek: flag + state + preview + capture + frame hover.
         dragCancelledRef.current = true;
         const pid = dragPointerRef.current;
@@ -609,7 +625,22 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     const p = toSvgCb(e.clientX, e.clientY);
     if (!p) return;
     if (tool === 'polygon') {
+      // Klik titik awal (dalam radius snap) = tutup, sama seperti Enter/klik-ganda.
+      // Mencegah titik duplikat menumpuk di titik awal saat menutup.
+      if (draft.length >= 3) {
+        const tol = (POLY_CLOSE_SNAP_PX * vbRef.current.w) / Math.max(1, cssRef.current.w);
+        const dx = p[0] - draft[0][0];
+        const dy = p[1] - draft[0][1];
+        if (Math.hypot(dx, dy) <= tol) {
+          commitPolygon(draft);
+          return;
+        }
+      }
       setDraft((d) => [...d, p]);
+      // Kursor menempel di titik baru: reset pratinjau sampai mouse bergerak lagi
+      // agar tak muncul garis nol / duplikat di titik yang baru dipasang.
+      polyCursorClient.current = null;
+      setPolyCursor(null);
       return;
     }
     if (tool === 'row' || tool === 'multirow') {
@@ -754,6 +785,13 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     const sg = seatGesture.current;
     if (sg && sg.pointerId === e.pointerId) {
       setSeatMarquee({ start: sg.start, end: p });
+      return;
+    }
+    // Pratinjau polygon: kursor tanpa tombol = titik sementara (draft + kursor
+    // = area bayangan layaknya ghost rectangle/stage/circle).
+    if (tool === 'polygon' && draft.length > 0 && e.buttons === 0 && !scaleDrag && !rotateDrag && !drag) {
+      polyCursorClient.current = { x: e.clientX, y: e.clientY };
+      setPolyCursor(p);
       return;
     }
     // Hover preview baris/blok: kursor tanpa tombol = ujung preview.
@@ -1797,15 +1835,53 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         );
       })()}
 
-      {draft.length > 0 && (
-        <g>
-          <polyline points={ptsStr(draft)} fill="none" stroke="#2563eb" strokeWidth={2} strokeDasharray="6 4" />
-          {draft.map((p, i) => (
-            <circle key={i} cx={p[0]} cy={p[1]} r={5} fill="#2563eb" />
-          ))}
-          <text x={draft[draft.length - 1][0] + 10} y={draft[draft.length - 1][1]} className="lbl">Enter/klik-ganda = tutup</text>
-        </g>
-      )}
+      {draft.length > 0 && (() => {
+        // Area bayangan layaknya ghost rectangle/stage/circle: draft + kursor.
+        // Saat kursor snap ke titik awal, pratinjau = draft tertutup (wujud final).
+        const tol = (POLY_CLOSE_SNAP_PX * vb.w) / Math.max(1, cssW);
+        const closeReady = draft.length >= 3 && polyCursor
+          && Math.hypot(polyCursor[0] - draft[0][0], polyCursor[1] - draft[0][1]) <= tol;
+        const previewPts = polyCursor && !closeReady ? [...draft, polyCursor] : draft;
+        const previewStr = ptsStr(previewPts);
+        const labelAt = polyCursor && !closeReady ? polyCursor : draft[draft.length - 1];
+        const hint = draft.length < 3
+          ? 'Klik tambah titik · Esc batal'
+          : closeReady
+            ? 'Klik titik awal untuk tutup'
+            : 'Klik titik awal / Enter / klik-ganda = tutup · Esc batal';
+        return (
+          <g pointerEvents="none" data-polygon-draft>
+            {previewPts.length === 2 && (
+              <line x1={previewPts[0][0]} y1={previewPts[0][1]} x2={previewPts[1][0]} y2={previewPts[1][1]}
+                stroke="#3b82f6" strokeWidth={2} strokeDasharray="6 4" />
+            )}
+            {previewPts.length >= 3 && (
+              <polygon points={previewStr} fill="rgba(147,197,253,0.35)" stroke="#3b82f6"
+                strokeWidth={2} strokeDasharray="6 4" strokeLinejoin="round" />
+            )}
+            {previewPts.length < 3 && draft.length >= 2 && (
+              <polyline points={ptsStr(draft)} fill="none" stroke="#2563eb" strokeWidth={2} strokeDasharray="6 4" />
+            )}
+            {polyCursor && !closeReady && (
+              <circle cx={polyCursor[0]} cy={polyCursor[1]} r={4} fill="#3b82f6" opacity={0.9} />
+            )}
+            {draft.map((p, i) => (
+              i === 0
+                ? (
+                  <g key={i}>
+                    {closeReady && (
+                      <circle cx={p[0]} cy={p[1]} r={13} fill="none" stroke="#16a34a" strokeWidth={2} strokeDasharray="4 3" />
+                    )}
+                    <circle cx={p[0]} cy={p[1]} r={closeReady ? 9 : 7}
+                      fill={closeReady ? '#16a34a' : '#2563eb'} stroke="#fff" strokeWidth={2} />
+                  </g>
+                )
+                : <circle key={i} cx={p[0]} cy={p[1]} r={5} fill="#2563eb" stroke="#fff" strokeWidth={1.5} />
+            ))}
+            <text x={labelAt[0] + 10} y={labelAt[1]} className="lbl">{hint}</text>
+          </g>
+        );
+      })()}
 
       {ghost && (
         <g pointerEvents="none" data-shape-preview={ghost.kind}>

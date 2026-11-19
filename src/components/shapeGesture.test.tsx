@@ -215,7 +215,7 @@ describe('pemisahan draf polygon vs shape', () => {
   const polyCount = (doc: ReturnType<typeof emptyVenue>) =>
     doc.objects.filter((o) => o.kind === 'section' && (o as VenueObject).shape === 'polygon').length;
 
-  it('Esc pada tool shape mempertahankan draf polygon; Enter/klik-ganda terkunci di tool shape', async () => {
+  it('pindah tool membatalkan draf polygon (seperti Esc); Enter/klik-ganda terkunci di tool shape', async () => {
     const m = await mountApp();
     await act(async () => { m.dockBtn('Polygon').click(); });
     const p1 = m.toClient(100, 100);
@@ -224,28 +224,33 @@ describe('pemisahan draf polygon vs shape', () => {
     await tapAt(m.svg, p1);
     await tapAt(m.svg, p2);
     await tapAt(m.svg, p3);
-    // Pindah ke Rectangle + mulai draf shape.
+    // Pindah ke Rectangle = batalkan draf polygon (seperti Esc).
     await act(async () => { m.dockBtn('Rectangle').click(); });
     expect(polyCount(await m.save())).toBe(0);
     await tapAt(m.svg, m.toClient(...WORLD_A));
     expect(m.shapeHint()).toBe('Klik lagi untuk membuat · Esc untuk batal');
-    // Enter dan klik-ganda saat tool Rectangle: draf polygon tetap tersimpan, nol objek baru.
+    // Enter dan klik-ganda saat tool Rectangle: tak ada objek baru.
     await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
     await act(async () => { m.svg().dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); });
     const mid = await m.save();
     expect(polyCount(mid)).toBe(0);
     expect(mid.objects.length).toBe(0);
-    // Esc: draf shape batal, draf polygon dipertahankan.
+    // Esc: draf shape batal.
     await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
     expect(m.shapeHint()).toBe('Klik titik awal di kanvas');
     expect((await m.save()).objects.length).toBe(0);
-    // Kembali ke Polygon: lanjutkan dari titik yang sama + tutup via Enter.
+    // Kembali ke Polygon: draf sudah batal, Enter saja tak menutup apa pun.
     await act(async () => { m.dockBtn('Polygon').click(); });
-    await tapAt(m.svg, m.toClient(150, 320));
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+    expect(polyCount(await m.save())).toBe(0);
+    // Gambar ulang 3 titik baru + tutup via Enter.
+    await tapAt(m.svg, m.toClient(100, 100));
+    await tapAt(m.svg, m.toClient(300, 100));
+    await tapAt(m.svg, m.toClient(200, 260));
     await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
     const done = await m.save();
     expect(polyCount(done)).toBe(1);
-    expect(done.objects[0].points).toHaveLength(4);
+    expect(done.objects[0].points).toHaveLength(3);
   });
 });
 
