@@ -149,6 +149,12 @@ export function ghostVisualHash(ghosts: Array<{ x: number; y: number; ok: boolea
   return h >>> 0;
 }
 
+/** Lepaskan fokus dari tombol dock agar outline + tooltip tak menempel di ikon lama. */
+function blurDockButton() {
+  const el = document.activeElement as HTMLElement | null;
+  if (el && el.closest?.('.dock')) el.blur();
+}
+
 function translateObj(o: VenueObject, dx: number, dy: number): VenueObject {
   const moved = {
     ...o,
@@ -500,7 +506,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     update((d) => ({ ...d, objects: [...d.objects, obj] }));
     select(obj.id);
     setDraft([]);
-  }, [doc.objects.length, update, select]);
+    // Selesai gambar → pindah ke Select agar klik berikutnya tak sengaja menambah lagi.
+    // Objek baru tetap terpilih (select di atas) sehingga panel langsung menunjukkan propertinya.
+    setTool('select');
+    blurDockButton();
+  }, [doc.objects.length, update, select, setTool]);
 
   // keyboard: Enter tutup polygon, Esc batal dulu lalu pindah ke Select (seperti V), Delete hapus (kursi dulu, baru objek)
   useEffect(() => {
@@ -906,6 +916,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
           update((d) => ({ ...d, objects: [...d.objects, obj] }));
           select(obj.id);
           setGhost(null);
+          // Selesai gambar → pindah ke Select agar klik berikutnya tak sengaja
+          // menambah lagi. Objek baru tetap terpilih sehingga panel langsung
+          // menunjukkan propertinya.
+          setTool('select');
+          blurDockButton();
         } else {
           setGhost({ kind: sgest.kind, a: sgest.start, b: endPt });
         }

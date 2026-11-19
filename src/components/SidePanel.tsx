@@ -668,7 +668,7 @@ function ToolOptions({ p, tool }: { p: Props; f: RowForm; tool: string }) {
         </div>
         <div className="object-config-group">
           <h4 className="subh">Setelah tertutup</h4>
-          <p className="muted">Tandai areanya sebagai section agar bisa diisi kursi. Draf tersimpan saat ganti tool.</p>
+          <p className="muted">Tandai areanya sebagai section agar bisa diisi kursi. Draf tersimpan saat ganti tool. Setelah tertutup tool pindah ke Select dan objek terpilih.</p>
         </div>
       </ToolShell>
     );
@@ -689,7 +689,7 @@ function ToolOptions({ p, tool }: { p: Props; f: RowForm; tool: string }) {
         </div>
         <div className="object-config-group">
           <h4 className="subh">Setelah dibuat</h4>
-          <p className="muted">Tandai sebagai section jika ingin diisi kursi. Tool tetap aktif untuk menggambar lagi.</p>
+          <p className="muted">Tandai sebagai section jika ingin diisi kursi. Setelah dibuat tool pindah ke Select dan objek terpilih.</p>
         </div>
       </ToolShell>
     );
@@ -709,7 +709,7 @@ function ToolOptions({ p, tool }: { p: Props; f: RowForm; tool: string }) {
         </div>
         <div className="object-config-group">
           <h4 className="subh">Catatan</h4>
-          <p className="muted">Panggung adalah dekorasi peta (bukan section): kursi tidak bisa dibuat di dalamnya. Tool tetap aktif untuk menggambar lagi.</p>
+          <p className="muted">Panggung adalah dekorasi peta (bukan section): kursi tidak bisa dibuat di dalamnya. Setelah dibuat tool pindah ke Select dan objek terpilih.</p>
         </div>
       </ToolShell>
     );

@@ -81,7 +81,7 @@ describe('gesture shape: klik–gerak–klik utama, seret cara cepat', () => {
     ['Lorong', 'aisle', 'Lorong'],
     ['Rectangle', 'rect', 'Kotak 1'],
     ['Circle', 'circle', 'Lingkaran 1'],
-  ])('%s: klik–klik membuat tepat satu objek lalu tool tetap aktif', async (label, kind, expectedLabel) => {
+  ])('%s: klik–klik membuat tepat satu objek lalu pindah ke Select dengan objek terpilih', async (label, kind, expectedLabel) => {
     const m = await mountApp();
     await act(async () => { m.dockBtn(label).click(); });
     expect(m.shapeHint()).toBe('Klik titik awal di kanvas');
@@ -91,11 +91,14 @@ describe('gesture shape: klik–gerak–klik utama, seret cara cepat', () => {
     expect(after.objects.length).toBe(before.objects.length + 1);
     const obj = after.objects[after.objects.length - 1];
     expect(obj.label).toBe(expectedLabel);
-    // Tool tetap aktif untuk menggambar lagi (bukan pindah ke Select).
-    expect(m.dockBtn(label).classList.contains('on')).toBe(true);
-    // Petunjuk kembali ke awal karena draf sudah jadi objek.
-    expect(m.shapeHint()).toBe('Klik titik awal di kanvas');
-    // Objek kedua berturut-turut: hitungan bertambah, label berurutan.
+    // Selesai gambar → pindah ke Select agar klik berikutnya tak sengaja menambah lagi.
+    expect(m.dockBtn('Select').classList.contains('on')).toBe(true);
+    expect(m.dockBtn(label).classList.contains('on')).toBe(false);
+    // Petunjuk shape hilang karena sudah di Select; objek baru tetap terpilih.
+    expect(m.shapeHint()).toBeNull();
+    expect(m.host.querySelector('[data-shape-preview]')).toBeNull();
+    // Objek kedua berturut-turut: aktifkan lagi tool-nya dulu, hitungan bertambah, label berurutan.
+    await act(async () => { m.dockBtn(label).click(); });
     const c = m.toClient(600, 500);
     const d = m.toClient(800, 650);
     await clickClick(m.svg, c, d);
@@ -124,7 +127,9 @@ describe('gesture shape: klik–gerak–klik utama, seret cara cepat', () => {
     const undone = await m.save();
     expect(undone.objects.length).toBe(before.objects.length);
     expect(m.undoLabel()).not.toBe(undoBefore);
+    // Setelah commit tool pindah ke Select → aktifkan lagi untuk cara seret.
     // Seret pada dua titik dunia yang sama → geometri identik (selain id).
+    await act(async () => { m.dockBtn(label).click(); });
     await dragAt(m.svg, a, b);
     const viaDrag = (await m.save()).objects.slice(-1)[0];
     expect(stripId(viaDrag)).toEqual(stripId(viaClick));
@@ -157,7 +162,9 @@ describe('gesture shape: klik–gerak–klik utama, seret cara cepat', () => {
     expect(m.shapeHint()).toBe('Lepas untuk membuat · Esc untuk batal');
     await act(async () => { m.svg().dispatchEvent(ptr('pointerup', b)); });
     expect((await m.save()).objects.length).toBe(1);
-    expect(m.shapeHint()).toBe('Klik titik awal di kanvas');
+    // Selesai gambar → pindah ke Select, petunjuk shape hilang.
+    expect(m.shapeHint()).toBeNull();
+    expect(m.dockBtn('Select').classList.contains('on')).toBe(true);
   });
 
   it('satu petunjuk status aktif di kanvas; teks SVG ganda dihapus', async () => {
