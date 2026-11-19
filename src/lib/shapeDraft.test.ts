@@ -5,7 +5,6 @@ import {
   isDragGesture,
   isShapeTool,
   toolForGhostKind,
-  type ShapeKind,
 } from './shapeDraft';
 
 const OPTS = { aisleWidth: 28, objectCount: 0 };
@@ -57,19 +56,13 @@ describe('shapeDraft geometry (dipakai kedua gesture)', () => {
     expect(buildShapeObject('rect', [0, 0], [10, 11], OPTS)).toBeNull();
   });
 
-  it('klik vs seret menghasilkan objek identik untuk dua titik sama', () => {
-    const kinds: ShapeKind[] = ['stage', 'aisle', 'rect', 'circle'];
-    for (const kind of kinds) {
-      const viaClick = buildShapeObject(kind, [12, 34], [120, 200], OPTS);
-      const viaDrag = buildShapeObject(kind, [12, 34], [120, 200], OPTS);
-      expect(viaClick).not.toBeNull();
-      expect(viaDrag).not.toBeNull();
-      // Bandingkan selain id acak.
-      const { id: _a, ...restClick } = viaClick!;
-      const { id: _b, ...restDrag } = viaDrag!;
-      void _a; void _b;
-      expect(restDrag).toEqual(restClick);
-    }
+  it('klik kedua terlalu dekat mengembalikan null (titik awal dipertahankan)', () => {
+    // Kedua gesture memakai builder yang sama; pemanggil mempertahankan
+    // titik awal bila hasilnya null. Lihat tes interaksi
+    // src/components/shapeGesture.test.tsx untuk perbandingan geometri
+    // klik–klik vs seret–lepas lewat event pointer nyata.
+    expect(buildShapeObject('rect', [12, 34], [14, 36], OPTS)).toBeNull();
+    expect(buildShapeObject('aisle', [12, 34], [14, 36], OPTS)).toBeNull();
   });
 });
 

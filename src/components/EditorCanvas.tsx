@@ -6,7 +6,7 @@ import { fitViewBox, toWorld, viewBoxStr } from '../lib/camera';
 import type { ViewBox } from '../lib/camera';
 import { getGridLevels, minorOpacity } from '../lib/grid';
 import { resizePreserveScale } from '../lib/viewTransform';
-import { ghostKindForTool, isShapeTool, SHAPE_CLICK_DRAG_THRESHOLD_PX, buildShapeObject, toolForGhostKind } from '../lib/shapeDraft';
+import { ghostKindForTool, isShapeTool, isDragGesture, buildShapeObject, toolForGhostKind } from '../lib/shapeDraft';
 import { resolvedPoints, sectionGeomFor, shapeCenter, vectorCanvasCenter } from '../lib/contain';
 import { bboxOf, normalizeAngle, rotatePoints, rotateShapeBy, rotationOf, toPointsString, translatePoints } from '../lib/geometry';
 import { buildSectionSummaryPath, sectionDragOffset } from '../lib/rowSummary';
@@ -239,6 +239,10 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
   const [ghost, setGhost] = useState<Ghost | null>(null);
   // Kabari panel saat draf bentuk ada/hilang (untuk petunjuk kontekstual).
   useEffect(() => { onShapeDraftChange?.(ghost !== null); }, [ghost, onShapeDraftChange]);
+  /** Posisi layar terakhir kursor saat draf shape aktif. Dipakai menghitung ulang
+   *  titik akhir pratinjau ketika kamera berubah tanpa kursor bergerak (mis. zoom
+   *  via tombol/keyboard). Titik awal (ghost.a) selalu koordinat dokumen. */
+  const shapeCursorClient = useRef<{ x: number; y: number } | null>(null);
   const [drag, setDrag] = useState<
     | { id: string; vertex: number; orig: VenueObject; start: Pt }
     | { id: string; vertex: -1; orig: VenueObject; start: Pt }
@@ -438,6 +442,21 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
   const selIdsRef = useRef(selectedSeatIds);
   selIdsRef.current = selectedSeatIds;
 
+  // Pratinjau mengikuti kamera: titik awal draf (ghost.a) tersimpan dalam
+  // koordinat dokumen; titik akhir dihitung ulang dari posisi layar terakhir
+  // kursor setiap viewBox berubah (zoom/tombol/keyboard/resize tanpa gerak
+  // kursor). Penyimpanan objek tetap memakai posisi event pointerup.
+  useEffect(() => {
+    if (!ghost || !isShapeTool(tool)) return;
+    const c = shapeCursorClient.current;
+    const svg = svgRef.current;
+    if (!c || !svg) return;
+    const r = svg.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return;
+    const w = toWorld(c.x, c.y, r, vbRef.current);
+    setGhost((g) => (g && (Math.abs(g.b[0] - w[0]) > 1e-9 || Math.abs(g.b[1] - w[1]) > 1e-9) ? { ...g, b: w } : g));
+  }, [vb, tool, ghost]);
+
   /** Klik kursi: tunggal = sebaris, ganda cepat = 1 kursi, modifier = toggle satuan. */
   const activateSeat = useCallback((seatId: string, additive: boolean) => {
     const entry = index.seatById.get(seatId);
@@ -488,19 +507,33 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     const onKey = (e: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName ?? '').toLowerCase();
       if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
-      if (e.key === 'Enter' && draft.length >= 3) commitPolygon(draft);
+      // Penyelesaian Polygon hanya saat tool Polygon aktif: Enter / klik-ganda
+      // dari tool lain (mis. shape) tidak boleh menutup draf yang tersimpan.
+      if (e.key === 'Enter' && tool === 'polygon' && draft.length >= 3) commitPolygon(draft);
       if (e.key === 'Escape') {
-        const hadWork = draft.length > 0 || ghost !== null || drag !== null
+        // Draf dihitung sesuai tool aktif: shape ↔ ghost, polygon ↔ draft titik.
+        // Esc pada tool shape membatalkan draf shape dan MEMPERTAHANKAN draf
+        // polygon agar bisa dilanjutkan saat kembali ke tool Polygon.
+        const hadShapeWork = ghost !== null || shapeGesture.current !== null;
+        const hadPolyWork = draft.length > 0;
+        const hadWork = (tool === 'polygon' ? hadPolyWork : isShapeTool(tool) ? hadShapeWork : (hadPolyWork || hadShapeWork))
+          || drag !== null
           || previewObj !== null || scaleDrag !== null || rotateDrag !== null
-          || seatMarquee !== null || rowGesture.current !== null || shapeGesture.current !== null || seatGesture.current !== null
+          || seatMarquee !== null || rowGesture.current !== null || seatGesture.current !== null
           || rowDrag !== null || anchor !== null || selectedId !== null || selectedSeatIds.length > 0;
         rowGesture.current = null;
-        shapeGesture.current = null;
         seatGesture.current = null;
         setSeatMarquee(null);
         onCancelRowDrag();
-        setDraft([]);
-        setGhost(null);
+        if (isShapeTool(tool)) {
+          shapeGesture.current = null;
+          setGhost(null);
+          // draf polygon dipertahankan
+        } else {
+          shapeGesture.current = null;
+          setGhost(null);
+          setDraft([]);
+        }
         // Batal penuh drag objek: flag + state + preview + capture + frame hover.
         dragCancelledRef.current = true;
         const pid = dragPointerRef.current;
@@ -598,6 +631,10 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     }
     if (tool === 'stage' || tool === 'aisle' || tool === 'rectangle' || tool === 'circle') {
       const kind: Ghost['kind'] = ghostKindForTool(tool);
+      // Titik awal selalu koordinat dokumen dari kamera terbaru.
+      const rc0 = e.currentTarget.getBoundingClientRect();
+      const p0 = toWorld(e.clientX, e.clientY, rc0, flushVb());
+      shapeCursorClient.current = { x: e.clientX, y: e.clientY };
       // Klik kedua dimulai saat draf sudah ada: jangan reset titik awal.
       if (ghost && ghost.kind === kind && toolForGhostKind(ghost.kind) === tool) {
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -605,8 +642,8 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
         return;
       }
       e.currentTarget.setPointerCapture(e.pointerId);
-      shapeGesture.current = { start: p, clientX: e.clientX, clientY: e.clientY, pointerId: e.pointerId, dragged: false, hadAnchor: false, kind };
-      setGhost({ kind, a: p, b: p });
+      shapeGesture.current = { start: p0, clientX: e.clientX, clientY: e.clientY, pointerId: e.pointerId, dragged: false, hadAnchor: false, kind };
+      setGhost({ kind, a: p0, b: p0 });
       return;
     }
     // Tool Select pada mode Canvas: grup baris SVG dihilangkan, jadi hit-test
@@ -697,8 +734,11 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     }
     const sgShape = shapeGesture.current;
     if (sgShape && sgShape.pointerId === e.pointerId) {
-      if (Math.hypot(e.clientX - sgShape.clientX, e.clientY - sgShape.clientY) >= SHAPE_CLICK_DRAG_THRESHOLD_PX) sgShape.dragged = true;
-      if (sgShape.dragged) setGhost({ kind: sgShape.kind, a: sgShape.start, b: p });
+      if (isDragGesture(e.clientX - sgShape.clientX, e.clientY - sgShape.clientY)) sgShape.dragged = true;
+      if (sgShape.dragged) {
+        shapeCursorClient.current = { x: e.clientX, y: e.clientY };
+        setGhost({ kind: sgShape.kind, a: sgShape.start, b: p });
+      }
       return;
     }
     const sg = seatGesture.current;
@@ -716,7 +756,9 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     }
     // Pratinjau hover bentuk: kursor tanpa tombol menggerakkan ujung draf
     // yang menunggu klik kedua (pola klik–gerak–klik ala baris kursi).
+    // Posisi layar disimpan agar pratinjau bisa dihitung ulang saat kamera berubah.
     if (ghost && isShapeTool(tool) && e.buttons === 0 && !scaleDrag && !rotateDrag && !drag && toolForGhostKind(ghost.kind) === tool) {
+      shapeCursorClient.current = { x: e.clientX, y: e.clientY };
       setGhost({ ...ghost, b: p });
       return;
     }
@@ -850,37 +892,31 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       const vbNow = flushVb();
       const r = svgRef.current?.getBoundingClientRect();
       const end = (r ? toWorld(e.clientX, e.clientY, r, vbNow) : toSvgCb(e.clientX, e.clientY)) ?? sgest.start;
-      const moved = Math.hypot(e.clientX - sgest.clientX, e.clientY - sgest.clientY) >= SHAPE_CLICK_DRAG_THRESHOLD_PX;
+      const moved = isDragGesture(e.clientX - sgest.clientX, e.clientY - sgest.clientY);
       if (e.currentTarget.hasPointerCapture(e.pointerId)) {
         try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* abaikan */ }
       }
-      const commitShape = (a: Pt, b: Pt): boolean => {
-        const obj = buildShapeObject(sgest.kind, a, b, { aisleWidth, objectCount: doc.objects.length });
-        if (!obj) return false;
-        // Satu objek = satu aksi undo (satu update).
-        update((d) => ({ ...d, objects: [...d.objects, obj] }));
-        select(obj.id);
-        return true;
+      // Satu jalur penyimpanan untuk klik kedua dan seret-lepas: aturan ukuran
+      // minimum, geometri, dan lebar lorong yang sama. Di bawah minimum,
+      // titik awal dipertahankan agar pengguna bisa memilih posisi akhir lain.
+      const commitShapeAt = (endPt: Pt): void => {
+        const obj = buildShapeObject(sgest.kind, sgest.start, endPt, { aisleWidth, objectCount: doc.objects.length });
+        if (obj) {
+          // Satu objek = satu aksi undo (satu update).
+          update((d) => ({ ...d, objects: [...d.objects, obj] }));
+          select(obj.id);
+          setGhost(null);
+        } else {
+          setGhost({ kind: sgest.kind, a: sgest.start, b: endPt });
+        }
       };
-      if (sgest.dragged || moved) {
-        // Cara cepat: tekan–seret–lepas dalam satu gerakan.
-        if (commitShape(sgest.start, end)) {
-          setGhost(null);
-        } else {
-          // Di bawah ukuran minimum: pertahankan titik awal.
-          setGhost({ kind: sgest.kind, a: sgest.start, b: end });
-        }
-      } else if (sgest.hadAnchor) {
-        // Klik kedua tanpa seret: buat objek dari pratinjau.
-        if (commitShape(sgest.start, end)) {
-          setGhost(null);
-        } else {
-          // Di bawah ukuran minimum: pertahankan titik awal.
-          setGhost({ kind: sgest.kind, a: sgest.start, b: end });
-        }
+      if (sgest.dragged || moved || sgest.hadAnchor) {
+        // Klik kedua tanpa seret ATAU cara cepat tekan–seret–lepas.
+        commitShapeAt(end);
       } else {
         // Klik pertama tanpa seret: pasang titik awal, tunggu klik kedua.
         // Pratinjau hover mengikuti kursor tanpa menahan tombol.
+        shapeCursorClient.current = { x: e.clientX, y: e.clientY };
         setGhost({ kind: sgest.kind, a: sgest.start, b: end });
       }
       return;
@@ -1307,9 +1343,9 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       onPointerMove={onSvgPointerMove}
       onPointerUp={onSvgPointerUp}
       onLostPointerCapture={() => { flushVb(); pan.current = null; if (rowGesture.current) { rowGesture.current = null; onCancelRowDrag(); } shapeGesture.current = null; seatGesture.current = null; setSeatMarquee(null); if (drag !== null || scaleDrag !== null || rotateDrag !== null || previewObj !== null) { dragCancelledRef.current = true; dragPointerRef.current = null; setDrag(null); setScaleDrag(null); setRotateDrag(null); setPreviewObj(null); } }}
-      onPointerCancel={() => { rowGesture.current = null; shapeGesture.current = null; seatGesture.current = null; setSeatMarquee(null); onCancelRowDrag(); flushVb(); pan.current = null; dragCancelledRef.current = true; dragPointerRef.current = null; setDrag(null); setScaleDrag(null); setRotateDrag(null); setGhost(null); setPreviewObj(null); hoverSeatRef.current = null; focusSeatRef.current = null; seatCanvasRef.current?.requestRedraw(); }}
+      onPointerCancel={() => { rowGesture.current = null; shapeGesture.current = null; shapeCursorClient.current = null; seatGesture.current = null; setSeatMarquee(null); onCancelRowDrag(); flushVb(); pan.current = null; dragCancelledRef.current = true; dragPointerRef.current = null; setDrag(null); setScaleDrag(null); setRotateDrag(null); setGhost(null); setPreviewObj(null); hoverSeatRef.current = null; focusSeatRef.current = null; seatCanvasRef.current?.requestRedraw(); }}
       onDoubleClick={() => {
-        if (draft.length >= 3) commitPolygon(draft);
+        if (tool === 'polygon' && draft.length >= 3) commitPolygon(draft);
       }}
     >
       <style>{`.canvas .lbl { font-size: ${Math.min(15, vb.w / 70)}px; }`}</style>
@@ -1757,7 +1793,7 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
       )}
 
       {ghost && (
-        <g pointerEvents="none">
+        <g pointerEvents="none" data-shape-preview={ghost.kind}>
           {ghost.kind === 'circle'
             ? <circle cx={(ghost.a[0] + ghost.b[0]) / 2} cy={(ghost.a[1] + ghost.b[1]) / 2} r={Math.hypot(ghost.b[0] - ghost.a[0], ghost.b[1] - ghost.a[1]) / 2} fill="rgba(147,197,253,0.35)" stroke="#3b82f6" strokeDasharray="6 4" pointerEvents="none" />
             : ghost.kind === 'stage' || ghost.kind === 'rect'
@@ -1765,7 +1801,6 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
             : <line x1={ghost.a[0]} y1={ghost.a[1]} x2={ghost.b[0]} y2={ghost.b[1]} stroke="#94a3b8" strokeWidth={aisleWidth} strokeLinecap="round" opacity={0.6} />}
           {/* Penanda titik awal draf bentuk (klik pertama). */}
           <circle cx={ghost.a[0]} cy={ghost.a[1]} r={5} fill="#2563eb" stroke="#fff" strokeWidth={2} />
-          <text x={ghost.a[0] + 12} y={ghost.a[1] - 10} className="lbl">Klik lagi untuk membuat · Esc untuk batal</text>
         </g>
       )}
 
@@ -1812,8 +1847,18 @@ export default function EditorCanvas({ hoveredObjectId, rowDrag, onRowDrag, onRo
     <div ref={liveRef} aria-live="polite" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }} />
     {isShapeTool(tool) && (
       <div className="shape-hint" role="status"
-        style={{ position: 'absolute', left: 12, bottom: 12, pointerEvents: 'none', background: 'rgba(15,23,42,0.85)', color: '#fff', fontSize: 12, padding: '4px 10px', borderRadius: 6 }}>
-        {ghost ? 'Klik lagi untuk membuat · Esc untuk batal' : 'Klik titik awal di kanvas'}
+        style={{
+          position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+          bottom: 76, pointerEvents: 'none', background: 'rgba(15,23,42,0.85)',
+          color: '#fff', fontSize: 12, padding: '4px 10px', borderRadius: 6,
+          zIndex: 60, maxWidth: 'calc(100% - 24px)', textAlign: 'center',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+        {!ghost
+          ? 'Klik titik awal di kanvas'
+          : shapeGesture.current?.dragged
+            ? 'Lepas untuk membuat · Esc untuk batal'
+            : 'Klik lagi untuk membuat · Esc untuk batal'}
       </div>
     )}
     </div>

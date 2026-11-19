@@ -685,7 +685,7 @@ function ToolOptions({ p, tool }: { p: Props; f: RowForm; tool: string }) {
             'Klik lagi untuk membuat · Esc untuk batal',
             'Cara cepat: tekan, seret, lepas dalam satu gerakan',
           ]} />
-          <p className="muted" role="status">{shapeHint}</p>
+          <p className="muted">{shapeHint}</p>
         </div>
         <div className="object-config-group">
           <h4 className="subh">Setelah dibuat</h4>
@@ -705,7 +705,7 @@ function ToolOptions({ p, tool }: { p: Props; f: RowForm; tool: string }) {
             'Klik lagi untuk membuat · Esc untuk batal',
             'Cara cepat: tekan, seret, lepas dalam satu gerakan',
           ]} />
-          <p className="muted" role="status">{shapeHint}</p>
+          <p className="muted">{shapeHint}</p>
         </div>
         <div className="object-config-group">
           <h4 className="subh">Catatan</h4>
@@ -728,7 +728,7 @@ function ToolOptions({ p, tool }: { p: Props; f: RowForm; tool: string }) {
           'Klik lagi untuk membuat · Esc untuk batal',
           'Cara cepat: tekan, seret, lepas dalam satu gerakan',
         ]} />
-        <p className="muted" role="status">{shapeHint}</p>
+        <p className="muted">{shapeHint}</p>
         <p className="muted">Lorong memotong area jalan; kursi yang footprint-nya menyentuh lorong tidak dihitung valid.</p>
       </div>
     </ToolShell>
