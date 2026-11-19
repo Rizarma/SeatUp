@@ -27,11 +27,11 @@ import Preview from './components/Preview';
 const TOOLS: { id: Tool; label: string; hint: string; Icon: LucideIcon; shortcut?: string }[] = [
   { id: 'select', label: 'Select', hint: 'Pilih atau geser objek', Icon: MousePointer2, shortcut: 'V' },
   { id: 'hand', label: 'Hand', hint: 'Seret untuk navigasi kanvas', Icon: Hand, shortcut: 'H' },
-  { id: 'stage', label: 'Stage', hint: 'Buat stage (seret kotak)', Icon: Podium },
-  { id: 'aisle', label: 'Lorong', hint: 'Buat lorong (seret garis)', Icon: Footprints },
+  { id: 'stage', label: 'Stage', hint: 'Buat stage (klik – gerak – klik · seret cepat)', Icon: Podium },
+  { id: 'aisle', label: 'Lorong', hint: 'Buat lorong (klik – gerak – klik · seret cepat)', Icon: Footprints },
   { id: 'polygon', label: 'Polygon', hint: 'Gambar polygon', Icon: Pentagon },
-  { id: 'rectangle', label: 'Rectangle', hint: 'Buat rectangle (seret di kanvas)', Icon: Square },
-  { id: 'circle', label: 'Circle', hint: 'Buat circle (seret diameter di kanvas)', Icon: Circle },
+  { id: 'rectangle', label: 'Rectangle', hint: 'Buat rectangle (klik – gerak – klik · seret cepat)', Icon: Square },
+  { id: 'circle', label: 'Circle', hint: 'Buat circle (klik – gerak – klik · seret cepat)', Icon: Circle },
   { id: 'seat', label: 'Pilih kursi', hint: 'Klik pilih kursi · Shift/Cmd/Ctrl multi · seret marquee', Icon: MousePointerClick },
   { id: 'row', label: 'Baris kursi', hint: 'Buat 1 baris (klik – gerak – klik)', Icon: Armchair },
   { id: 'multirow', label: 'Blok baris', hint: 'Buat banyak baris sekaligus (klik – gerak – klik)', Icon: Rows3 },
@@ -88,6 +88,7 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
   const [rowDrag, setRowDrag] = useState<{ start: Pt; end: Pt } | null>(null);
   const cancelRowDrag = useCallback(() => { setRowDrag(null); setAnchor(null); setRowCursor(null); }, []);
   const [aisleWidth, setAisleWidth] = useState(28);
+  const [shapeHasDraft, setShapeHasDraft] = useState(false);
   const [showBg, setShowBg] = useState(true);
   const [importMsg, setImportMsg] = useState('');
   const [panelOpen, setPanelOpen] = useState(false);
@@ -385,16 +386,14 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
           {tool === 'multirow' ? `${rowPreview.rows} baris × ${rowPreview.count} kursi` : `${rowPreview.count} kursi`} · {validCount} valid · {rejectedCount} ditolak
           <span>Lepaskan untuk membuat {tool === 'multirow' ? 'blok' : 'baris'} · Esc untuk batal</span>
         </div>}
-        <EditorCanvas hoveredObjectId={hoveredObjectId} onRowDrag={handleRowDrag} onRowRelease={releaseRowDrag} onRowHover={handleRowHover} onRowTapCommit={handleTapCommit} onCancelRowDrag={cancelRowDrag} rowDrag={rowDrag} focusId={activeFocusId} onFocusSection={enterSection} seatRadius={8 * placementScale} anchor={anchor} onAnchor={setAnchor} showBg={showBg} ghosts={ghosts} aisleWidth={aisleWidth} />
+        <EditorCanvas hoveredObjectId={hoveredObjectId} onRowDrag={handleRowDrag} onRowRelease={releaseRowDrag} onRowHover={handleRowHover} onRowTapCommit={handleTapCommit} onCancelRowDrag={cancelRowDrag} rowDrag={rowDrag} focusId={activeFocusId} onFocusSection={enterSection} seatRadius={8 * placementScale} anchor={anchor} onAnchor={setAnchor} showBg={showBg} ghosts={ghosts} aisleWidth={aisleWidth} onShapeDraftChange={setShapeHasDraft} />
         <div className="dock" role="toolbar" aria-label="Alat editor">
           {dockGroups.map((group, gi) => (
             <span key={gi} className="dgroup" role="group" aria-label={gi === 0 ? 'Pilih alat' : gi === 1 ? 'Stage dan lorong' : 'Bentuk'}>
               {group.map((t) => {
                 const tip = t.shortcut
                   ? `${t.label} — ${t.shortcut}`
-                  : ['stage', 'aisle', 'polygon', 'rectangle', 'circle'].includes(t.id)
-                    ? t.label
-                    : `${t.label} — ${t.hint}`;
+                  : `${t.label} — ${t.hint}`;
                 return (
                   <button
                     key={t.id}
@@ -417,6 +416,7 @@ function EditorTab({ onSave, onLoad, onExport, onImportJson }: {
         onHoverObject={setHoveredObjectId}
         rowForm={rowForm} setRowForm={setRowForm} anchor={anchor}
         aisleWidth={aisleWidth} setAisleWidth={setAisleWidth}
+        shapeHasDraft={shapeHasDraft}
         showBg={showBg} setShowBg={setShowBg} importMsg={importMsg}
         onImportFile={importFile} onImportSvgFile={importSvgFile} onBgFile={bgFile}
         onClearBg={clearBg}

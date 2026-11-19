@@ -27,6 +27,8 @@ interface Props {
   anchor: Pt | null;
   aisleWidth: number;
   setAisleWidth: (v: number) => void;
+  /** True bila draf bentuk (klik pertama) sedang menunggu klik kedua. */
+  shapeHasDraft?: boolean;
   showBg: boolean;
   setShowBg: (v: boolean) => void;
   importMsg: string;
@@ -609,6 +611,9 @@ function SectionSelfPanel({ active, onRequestDelete }: {
 }
 
 function ToolOptions({ p, tool }: { p: Props; f: RowForm; tool: string }) {
+  const shapeHint = p.shapeHasDraft
+    ? 'Klik lagi untuk membuat · Esc untuk batal'
+    : 'Klik titik awal di kanvas';
   if (tool === 'hand') {
     return (
       <ToolShell icon={Hand} title="Geser kanvas" sub="Navigasi tampilan, bukan menggambar">
@@ -671,41 +676,46 @@ function ToolOptions({ p, tool }: { p: Props; f: RowForm; tool: string }) {
   if (tool === 'rectangle' || tool === 'circle') {
     const isCircle = tool === 'circle';
     return (
-      <ToolShell icon={isCircle ? Circle : Square} title={isCircle ? 'Buat lingkaran' : 'Buat kotak'} sub={isCircle ? 'Seret diameter di kanvas' : 'Seret kotak di kanvas'}>
+      <ToolShell icon={isCircle ? Circle : Square} title={isCircle ? 'Buat lingkaran' : 'Buat kotak'} sub="Klik – gerak – klik · seret cepat">
         <div className="object-config-group">
           <h4 className="subh">Cara pakai</h4>
           <ToolSteps items={[
-            isCircle ? 'Seret di kanvas untuk diameter lingkaran' : 'Seret di kanvas untuk ukuran kotak',
-            'Lepas untuk membuat bentuk',
-            'Pilih objek untuk menggeser atau mengubah ukurannya',
+            'Klik titik awal di kanvas',
+            isCircle ? 'Gerakkan kursor — pratinjau diameter mengikuti' : 'Gerakkan kursor — pratinjau kotak mengikuti',
+            'Klik lagi untuk membuat · Esc untuk batal',
+            'Cara cepat: tekan, seret, lepas dalam satu gerakan',
           ]} />
+          <p className="muted" role="status">{shapeHint}</p>
         </div>
         <div className="object-config-group">
           <h4 className="subh">Setelah dibuat</h4>
-          <p className="muted">Tandai sebagai section jika ingin diisi kursi.</p>
+          <p className="muted">Tandai sebagai section jika ingin diisi kursi. Tool tetap aktif untuk menggambar lagi.</p>
         </div>
       </ToolShell>
     );
   }
   if (tool === 'stage') {
     return (
-      <ToolShell icon={Podium} title="Buat panggung" sub="Seret kotak di kanvas">
+      <ToolShell icon={Podium} title="Buat panggung" sub="Klik – gerak – klik · seret cepat">
         <div className="object-config-group">
           <h4 className="subh">Cara pakai</h4>
           <ToolSteps items={[
-            'Seret kotak di kanvas untuk ukuran panggung',
-            'Lepas untuk membuat panggung',
+            'Klik titik awal di kanvas',
+            'Gerakkan kursor — pratinjau kotak mengikuti',
+            'Klik lagi untuk membuat · Esc untuk batal',
+            'Cara cepat: tekan, seret, lepas dalam satu gerakan',
           ]} />
+          <p className="muted" role="status">{shapeHint}</p>
         </div>
         <div className="object-config-group">
           <h4 className="subh">Catatan</h4>
-          <p className="muted">Panggung adalah dekorasi peta (bukan section): kursi tidak bisa dibuat di dalamnya.</p>
+          <p className="muted">Panggung adalah dekorasi peta (bukan section): kursi tidak bisa dibuat di dalamnya. Tool tetap aktif untuk menggambar lagi.</p>
         </div>
       </ToolShell>
     );
   }
   return (
-    <ToolShell icon={Footprints} title="Buat lorong" sub="Seret garis di kanvas">
+    <ToolShell icon={Footprints} title="Buat lorong" sub="Klik – gerak – klik · seret cepat">
       <div className="object-config-group">
         <h4 className="subh">Lebar lorong</h4>
         <Num label="Lebar lorong (px)" value={p.aisleWidth} onChange={p.setAisleWidth} min={4} max={120} />
@@ -713,9 +723,12 @@ function ToolOptions({ p, tool }: { p: Props; f: RowForm; tool: string }) {
       <div className="object-config-group">
         <h4 className="subh">Cara pakai</h4>
         <ToolSteps items={[
-          'Seret garis di kanvas untuk jalur lorong',
-          'Lepas untuk membuat lorong',
+          'Klik titik awal di kanvas',
+          'Gerakkan kursor — pratinjau jalur mengikuti',
+          'Klik lagi untuk membuat · Esc untuk batal',
+          'Cara cepat: tekan, seret, lepas dalam satu gerakan',
         ]} />
+        <p className="muted" role="status">{shapeHint}</p>
         <p className="muted">Lorong memotong area jalan; kursi yang footprint-nya menyentuh lorong tidak dihitung valid.</p>
       </div>
     </ToolShell>
